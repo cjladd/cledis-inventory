@@ -8,36 +8,36 @@ const UpdateAlertSchema = z.object({
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const data = UpdateAlertSchema.parse(body);
 
     const alert = await prisma.alert.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!alert) {
       return NextResponse.json({ error: "Alert not found" }, { status: 404 });
     }
 
-    // TODO: Get userId from auth session
     const firstUser = await prisma.user.findFirst();
     const userId = firstUser?.id;
 
     const updatedAlert = await prisma.alert.update({
-      where: { id: params.id },
+      where: { id },
       data: {
-        status: data.status,
-        resolvedAt: new Date(),
+        status:          data.status,
+        resolvedAt:      new Date(),
         resolvedByUserId: userId,
       },
     });
 
     return NextResponse.json({
       success: true,
-      alert: updatedAlert,
+      alert:   updatedAlert,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

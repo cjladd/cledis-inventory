@@ -17,11 +17,9 @@ Kitchen-Up Inventory (KUI) needs to look polished for a demo to non-technical st
 **File:** `prisma/seed.ts`
 
 Make the demo look alive with realistic, varied data:
-- **Complete all 5 menu item recipes** (currently only 2 of 5 have ingredient mappings)
-  - Chicken Tacos: add corn tortillas
-  - Beef Burrito: beef, flour tortillas, rice, beans, cheese, sour cream
-  - Carnitas Bowl: carnitas, rice, beans, lettuce, cheese, salsa, sour cream
-  - Chips & Guacamole: chips, guacamole
+- **Complete 5 menu item recipes. you will scrape the data from cledis.com and pick 5 burgers/items** 
+  - scraped from cledis.com
+  - remove items currently in project not on the menu.
 - **Add LiveAdjustment records** to create varied stock levels:
   - ~8 items OK (stock well above par)
   - ~7 items Low (stock at 40-50% of par)
@@ -145,6 +143,9 @@ Settings links to `/settings/items`, `/settings/recipes`, `/settings/users` — 
 7. Log prep/waste → stock updates, alerts trigger
 8. Settings → Toast status shows "Demo Mode", save works
 9. Admin pages → items/recipes/users all load with data
+
+## Final Step
+ - create readme.md file that explains from step one how to launch the web-app, and explains purpose. 
 
 ## Demo Script (What to show stakeholders)
 1. Open app → see login screen with "Kitchen-Up Inventory" branding

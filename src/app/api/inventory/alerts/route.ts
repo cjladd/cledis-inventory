@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { computeStockFromData } from "@/lib/inventory";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const limit  = parseInt(searchParams.get("limit") || "20");
 
     const where: Record<string, unknown> = {};
     if (status && status !== "all") {
@@ -19,48 +20,55 @@ export async function GET(request: Request) {
       include: {
         inventoryItem: {
           select: {
-            id: true,
-            name: true,
-            unit: true,
+            id:          true,
+            name:        true,
+            unit:        true,
             safetyStock: true,
-            parLevel: true,
+            parLevel:    true,
             liveAdjustments: {
               select: { type: true, quantity: true },
+            },
+            recipes: {
+              include: {
+                menuItem: {
+                  include: {
+                    saleEvents: { select: { quantity: true } },
+                  },
+                },
+              },
             },
           },
         },
       },
     });
 
-    // Enrich with current stock calculation
     const enrichedAlerts = alerts.map((alert) => {
       const item = alert.inventoryItem;
-      const prepTotal = item.liveAdjustments
-        .filter((a) => a.type === "PREP")
-        .reduce((sum, a) => sum + a.quantity, 0);
-      const wasteTotal = item.liveAdjustments
-        .filter((a) => a.type === "WASTE")
-        .reduce((sum, a) => sum + a.quantity, 0);
-      const currentStock = Math.max(0, item.parLevel + prepTotal - wasteTotal);
+      const { currentStock } = computeStockFromData(
+        item.parLevel,
+        item.safetyStock,
+        item.liveAdjustments,
+        item.recipes
+      );
 
       return {
-        id: alert.id,
-        status: alert.status,
+        id:                  alert.id,
+        status:              alert.status,
         predictedDepletionAt: alert.predictedDepletionAt,
-        createdAt: alert.createdAt,
+        createdAt:           alert.createdAt,
         inventoryItem: {
-          id: item.id,
-          name: item.name,
-          unit: item.unit,
-          currentStock: Math.round(currentStock * 100) / 100,
-          safetyStock: item.safetyStock,
+          id:           item.id,
+          name:         item.name,
+          unit:         item.unit,
+          currentStock,
+          safetyStock:  item.safetyStock,
         },
       };
     });
 
     return NextResponse.json({
       alerts: enrichedAlerts,
-      total: enrichedAlerts.length,
+      total:  enrichedAlerts.length,
     });
   } catch (error) {
     console.error("Error fetching alerts:", error);

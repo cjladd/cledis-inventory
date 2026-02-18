@@ -1,30 +1,25 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import toastSdk, { ToastWebhookPayload } from "@/lib/toast-sdk";
+import { calculateCurrentStock } from "@/lib/inventory";
 
 /**
  * Toast Webhook Handler
- * 
- * This endpoint receives webhooks from Toast POS for:
- * - order_updated: When orders are created/updated/closed
- * - menu_updated: When menu items change
- * 
- * PLACEHOLDER: Webhook signature verification and processing
- * Fill in TOAST_WEBHOOK_SECRET in .env to enable signature verification
+ *
+ * Receives webhooks from Toast POS for order_updated / menu_updated events.
+ * Fill in TOAST_WEBHOOK_SECRET in .env to enable signature verification.
  */
 
 export async function POST(request: Request) {
   try {
-    const rawBody = await request.text();
-    const signature = request.headers.get("Toast-Signature") || "";
+    const rawBody  = await request.text();
+    const signature = request.headers.get("Toast-Signature") ?? "";
 
-    // Verify webhook signature
     if (!toastSdk.verifyWebhookSignature(rawBody, signature)) {
       console.warn("[Toast Webhook] Invalid signature");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    // Parse payload
     const payload: ToastWebhookPayload = toastSdk.parseWebhookPayload(rawBody);
     console.log(`[Toast Webhook] Received: ${payload.eventType}`);
 
@@ -53,9 +48,6 @@ export async function POST(request: Request) {
   }
 }
 
-/**
- * Handle order events to decrement inventory
- */
 async function handleOrderEvent(payload: ToastWebhookPayload) {
   const orderGuid = payload.data?.orderGuid;
   if (!orderGuid) {
@@ -63,7 +55,7 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
     return;
   }
 
-  // Check for duplicate processing (idempotency)
+  // Idempotency check
   const existingSale = await prisma.saleEvent.findFirst({
     where: { toastOrderId: orderGuid },
   });
@@ -73,14 +65,12 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
     return;
   }
 
-  // Fetch full order details from Toast
   const order = await toastSdk.fetchOrder(orderGuid);
   if (!order) {
     console.warn(`[Toast Webhook] Could not fetch order ${orderGuid}`);
     return;
   }
 
-  // Get location
   const location = await prisma.location.findFirst({
     where: { toastLocationId: payload.restaurantGuid },
   });
@@ -90,13 +80,11 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
     return;
   }
 
-  // Process each item in the order
-  for (const check of order.checks || []) {
-    for (const selection of check.selections || []) {
-      // Find matching menu item
+  for (const check of order.checks ?? []) {
+    for (const selection of check.selections ?? []) {
       const menuItem = await prisma.menuItem.findFirst({
         where: {
-          locationId: location.id,
+          locationId:      location.id,
           toastMenuItemId: selection.menuItemGuid,
         },
       });
@@ -106,59 +94,40 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
         continue;
       }
 
-      // Create sale event
       await prisma.saleEvent.create({
         data: {
           toastOrderId: orderGuid,
-          quantity: selection.quantity,
-          locationId: location.id,
-          menuItemId: menuItem.id,
+          quantity:     selection.quantity,
+          locationId:   location.id,
+          menuItemId:   menuItem.id,
         },
       });
 
-      console.log(
-        `[Toast Webhook] Recorded sale: ${selection.quantity}x ${menuItem.name}`
-      );
+      console.log(`[Toast Webhook] Recorded sale: ${selection.quantity}x ${menuItem.name}`);
 
-      // Check recipes and trigger alerts if needed
+      // Check alerts using the shared accurate calculation
       const recipes = await prisma.recipe.findMany({
-        where: { menuItemId: menuItem.id },
+        where:   { menuItemId: menuItem.id },
         include: { inventoryItem: true },
       });
 
       for (const recipe of recipes) {
-        // Calculate current stock and check if alert needed
-        const item = recipe.inventoryItem;
-        const adjustments = await prisma.liveAdjustment.findMany({
-          where: { inventoryItemId: item.id },
-        });
+        const { currentStock } = await calculateCurrentStock(recipe.inventoryItem.id);
 
-        const prepTotal = adjustments
-          .filter((a) => a.type === "PREP")
-          .reduce((sum, a) => sum + a.quantity, 0);
-        const wasteTotal = adjustments
-          .filter((a) => a.type === "WASTE")
-          .reduce((sum, a) => sum + a.quantity, 0);
-
-        const currentStock = item.parLevel + prepTotal - wasteTotal;
-
-        if (currentStock <= item.safetyStock) {
-          // Check if alert already exists
+        if (currentStock <= recipe.inventoryItem.safetyStock) {
           const existingAlert = await prisma.alert.findFirst({
-            where: {
-              inventoryItemId: item.id,
-              status: "ACTIVE",
-            },
+            where: { inventoryItemId: recipe.inventoryItem.id, status: "ACTIVE" },
           });
 
           if (!existingAlert) {
             await prisma.alert.create({
               data: {
-                inventoryItemId: item.id,
-                status: "ACTIVE",
+                inventoryItemId:      recipe.inventoryItem.id,
+                status:               "ACTIVE",
+                predictedDepletionAt: new Date(Date.now() + 60 * 60 * 1000),
               },
             });
-            console.log(`[Toast Webhook] Created alert for ${item.name}`);
+            console.log(`[Toast Webhook] Created alert for ${recipe.inventoryItem.name}`);
           }
         }
       }
@@ -166,22 +135,15 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
   }
 }
 
-/**
- * Handle menu update events
- */
-async function handleMenuEvent(payload: ToastWebhookPayload) {
-  console.log("[Toast Webhook] Menu updated - sync required");
-  // TODO: Implement menu sync logic
-  // This would refresh local menu item cache from Toast
+async function handleMenuEvent(_payload: ToastWebhookPayload) {
+  console.log("[Toast Webhook] Menu updated — sync required");
 }
 
-/**
- * Health check endpoint for webhook registration
- */
+/** Health check endpoint for webhook registration */
 export async function GET() {
   return NextResponse.json({
-    status: "ok",
+    status:     "ok",
     configured: toastSdk.isConfigured(),
-    message: "Toast webhook endpoint ready",
+    message:    "Toast webhook endpoint ready",
   });
 }

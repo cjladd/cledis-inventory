@@ -1,70 +1,73 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import toast from "react-hot-toast";
 import ItemCard from "@/components/ItemCard";
 import QuantityModal from "@/components/QuantityModal";
+import { getUser } from "@/lib/auth";
 
 type InventoryItem = {
-  id: string;
-  name: string;
+  id:           string;
+  name:         string;
   currentStock: number;
-  unit: string;
-  parLevel: number;
-  safetyStock: number;
-  category: string | null;
-  status: "ok" | "low" | "critical" | "out";
+  unit:         string;
+  parLevel:     number;
+  safetyStock:  number;
+  category:     string | null;
+  status:       "ok" | "low" | "critical" | "out";
 };
 
 const WASTE_REASONS = [
-  { value: "EXPIRED", label: "Expired" },
-  { value: "SPOILED", label: "Spoiled" },
-  { value: "OVERCOOKED", label: "Overcooked" },
-  { value: "DROPPED", label: "Dropped" },
-  { value: "OVER_PREP", label: "Over-prepped" },
-  { value: "CUSTOMER_RETURN", label: "Customer Return" },
-  { value: "OTHER", label: "Other" },
+  { value: "EXPIRED",         label: "Expired"        },
+  { value: "SPOILED",         label: "Spoiled"        },
+  { value: "OVERCOOKED",      label: "Overcooked"     },
+  { value: "DROPPED",         label: "Dropped"        },
+  { value: "OVER_PREP",       label: "Over-prepped"   },
+  { value: "CUSTOMER_RETURN", label: "Customer Return"},
+  { value: "OTHER",           label: "Other"          },
 ];
 
 export default function WastePage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [items,          setItems]          = useState<InventoryItem[]>([]);
+  const [filteredItems,  setFilteredItems]  = useState<InventoryItem[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState(false);
+  const [search,         setSearch]         = useState("");
+  const [selectedItem,   setSelectedItem]   = useState<InventoryItem | null>(null);
   const [selectedReason, setSelectedReason] = useState("SPOILED");
   const [showReasonPicker, setShowReasonPicker] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
+  const [submitting,     setSubmitting]     = useState(false);
+  const user = getUser();
+
+  const fetchItems = async () => {
+    setError(false);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/inventory");
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      setItems(data.items ?? []);
+      setFilteredItems(data.items ?? []);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchItems(); }, []);
 
   useEffect(() => {
-    async function fetchItems() {
-      try {
-        const res = await fetch("/api/inventory");
-        if (res.ok) {
-          const data = await res.json();
-          setItems(data.items || []);
-          setFilteredItems(data.items || []);
-        }
-      } catch (error) {
-        console.error("Error fetching items:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchItems();
-  }, []);
-
-  useEffect(() => {
-    if (search) {
-      const filtered = items.filter(
-        (item) =>
-          item.name.toLowerCase().includes(search.toLowerCase()) ||
-          item.category?.toLowerCase().includes(search.toLowerCase())
-      );
-      setFilteredItems(filtered);
-    } else {
-      setFilteredItems(items);
-    }
+    const q = search.toLowerCase();
+    setFilteredItems(
+      q
+        ? items.filter(
+            (i) =>
+              i.name.toLowerCase().includes(q) ||
+              i.category?.toLowerCase().includes(q)
+          )
+        : items
+    );
   }, [search, items]);
 
   const handleItemClick = (item: InventoryItem) => {
@@ -79,26 +82,22 @@ export default function WastePage() {
 
   const handleSubmitWaste = async (quantity: number) => {
     if (!selectedItem) return;
-
     setSubmitting(true);
     try {
       const res = await fetch("/api/inventory/waste", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          itemId: selectedItem.id,
+        body:    JSON.stringify({
+          itemId:   selectedItem.id,
           quantity,
-          unit: selectedItem.unit,
-          reason: selectedReason,
-          note: "",
+          unit:     selectedItem.unit,
+          reason:   selectedReason,
+          userId:   user?.id,
         }),
       });
 
       if (res.ok) {
-        setSuccessMessage(
-          `Logged ${quantity} ${selectedItem.unit} waste: ${selectedItem.name}`
-        );
-        // Update local state
+        toast.success(`Logged ${quantity} ${selectedItem.unit} waste: ${selectedItem.name}`);
         setItems((prev) =>
           prev.map((item) =>
             item.id === selectedItem.id
@@ -106,10 +105,12 @@ export default function WastePage() {
               : item
           )
         );
-        setTimeout(() => setSuccessMessage(""), 3000);
+      } else {
+        const err = await res.json();
+        toast.error(err.error ?? "Failed to log waste");
       }
-    } catch (error) {
-      console.error("Error logging waste:", error);
+    } catch {
+      toast.error("Network error. Please try again.");
     } finally {
       setSubmitting(false);
       setSelectedItem(null);
@@ -119,38 +120,36 @@ export default function WastePage() {
 
   return (
     <div className="px-4 pt-6 pb-4">
-      {/* Header */}
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Log Waste</h1>
-        <p className="text-sm text-gray-500">
-          Record wasted items with reason
-        </p>
+        <p className="text-sm text-gray-500">Record wasted items with reason</p>
       </header>
 
-      {/* Success Toast */}
-      {successMessage && (
-        <div className="fixed top-4 left-4 right-4 z-50 bg-red-500 text-white px-4 py-3 rounded-xl shadow-lg animate-pulse">
-          ✓ {successMessage}
-        </div>
-      )}
-
-      {/* Search */}
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search items..."
+          placeholder="Search items…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
         />
       </div>
 
-      {/* Items List */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
           ))}
+        </div>
+      ) : error ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500 mb-4">Failed to load inventory</p>
+          <button
+            onClick={fetchItems}
+            className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600"
+          >
+            Retry
+          </button>
         </div>
       ) : filteredItems.length > 0 ? (
         <div className="space-y-3">
@@ -161,7 +160,7 @@ export default function WastePage() {
               currentStock={item.currentStock}
               unit={item.unit}
               status={item.status}
-              category={item.category || undefined}
+              category={item.category ?? undefined}
               onClick={() => handleItemClick(item)}
             />
           ))}
@@ -172,10 +171,13 @@ export default function WastePage() {
         </p>
       )}
 
-      {/* Reason Picker Modal */}
+      {/* Reason Picker */}
       {showReasonPicker && selectedItem && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
-          <div className="w-full max-w-lg bg-white rounded-t-2xl p-4 animate-slide-up">
+          <div className="w-full max-w-lg bg-white rounded-t-2xl p-4">
+            <div className="flex justify-center mb-3">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Why is {selectedItem.name} being wasted?
             </h3>
@@ -195,10 +197,7 @@ export default function WastePage() {
               ))}
             </div>
             <button
-              onClick={() => {
-                setShowReasonPicker(false);
-                setSelectedItem(null);
-              }}
+              onClick={() => { setShowReasonPicker(false); setSelectedItem(null); }}
               className="w-full mt-4 py-3 text-gray-500 font-medium"
             >
               Cancel

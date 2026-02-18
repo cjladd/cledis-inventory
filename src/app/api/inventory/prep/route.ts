@@ -3,11 +3,11 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 
 const PrepSchema = z.object({
-  itemId: z.string().min(1),
+  itemId:   z.string().min(1),
   quantity: z.number().positive(),
-  unit: z.string().optional(),
-  note: z.string().optional(),
-  userId: z.string().optional(), // Will come from auth session in production
+  unit:     z.string().optional(),
+  note:     z.string().optional(),
+  userId:   z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -15,7 +15,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const data = PrepSchema.parse(body);
 
-    // Verify item exists
     const item = await prisma.inventoryItem.findUnique({
       where: { id: data.itemId },
     });
@@ -27,21 +26,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // TODO: Get userId from auth session
-    // For now, use a placeholder or first user
     let userId = data.userId;
     if (!userId) {
       const firstUser = await prisma.user.findFirst();
-      userId = firstUser?.id || "system";
+      userId = firstUser?.id ?? "system";
     }
 
-    // Create live adjustment
     const adjustment = await prisma.liveAdjustment.create({
       data: {
-        type: "PREP",
-        quantity: data.quantity,
-        unit: data.unit || item.unit,
-        note: data.note,
+        type:            "PREP",
+        quantity:        data.quantity,
+        unit:            data.unit ?? item.unit,
+        note:            data.note,
         inventoryItemId: data.itemId,
         userId,
       },
@@ -52,16 +48,15 @@ export async function POST(request: Request) {
       },
     });
 
-    // Create audit log
     await prisma.auditLog.create({
       data: {
-        action: "PREP",
+        action:     "PREP",
         entityType: "LiveAdjustment",
-        entityId: adjustment.id,
+        entityId:   adjustment.id,
         details: {
           itemName: item.name,
           quantity: data.quantity,
-          unit: data.unit || item.unit,
+          unit:     data.unit ?? item.unit,
         },
         locationId: item.locationId,
         userId,
@@ -71,11 +66,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       adjustment: {
-        id: adjustment.id,
-        type: adjustment.type,
-        quantity: adjustment.quantity,
-        unit: adjustment.unit,
-        itemName: adjustment.inventoryItem.name,
+        id:        adjustment.id,
+        type:      adjustment.type,
+        quantity:  adjustment.quantity,
+        unit:      adjustment.unit,
+        itemName:  adjustment.inventoryItem.name,
         createdAt: adjustment.createdAt,
       },
     });

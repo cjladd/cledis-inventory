@@ -6,20 +6,6 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Calculate stock status based on current level vs par/safety thresholds
- */
-export function getStockStatus(
-  currentStock: number,
-  parLevel: number,
-  safetyStock: number
-): "ok" | "low" | "critical" | "out" {
-  if (currentStock <= 0) return "out";
-  if (currentStock <= safetyStock) return "critical";
-  if (currentStock <= parLevel * 0.5) return "low";
-  return "ok";
-}
-
-/**
  * Format a date for display
  */
 export function formatDate(date: Date | string): string {
@@ -76,7 +62,7 @@ export function debounce<T extends (...args: unknown[]) => void>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
