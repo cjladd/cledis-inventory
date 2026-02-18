@@ -1,0 +1,95 @@
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { z } from "zod";
+
+const PrepSchema = z.object({
+  itemId: z.string().min(1),
+  quantity: z.number().positive(),
+  unit: z.string().optional(),
+  note: z.string().optional(),
+  userId: z.string().optional(), // Will come from auth session in production
+});
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const data = PrepSchema.parse(body);
+
+    // Verify item exists
+    const item = await prisma.inventoryItem.findUnique({
+      where: { id: data.itemId },
+    });
+
+    if (!item) {
+      return NextResponse.json(
+        { error: "Inventory item not found" },
+        { status: 404 }
+      );
+    }
+
+    // TODO: Get userId from auth session
+    // For now, use a placeholder or first user
+    let userId = data.userId;
+    if (!userId) {
+      const firstUser = await prisma.user.findFirst();
+      userId = firstUser?.id || "system";
+    }
+
+    // Create live adjustment
+    const adjustment = await prisma.liveAdjustment.create({
+      data: {
+        type: "PREP",
+        quantity: data.quantity,
+        unit: data.unit || item.unit,
+        note: data.note,
+        inventoryItemId: data.itemId,
+        userId,
+      },
+      include: {
+        inventoryItem: {
+          select: { name: true, unit: true },
+        },
+      },
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "PREP",
+        entityType: "LiveAdjustment",
+        entityId: adjustment.id,
+        details: {
+          itemName: item.name,
+          quantity: data.quantity,
+          unit: data.unit || item.unit,
+        },
+        locationId: item.locationId,
+        userId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      adjustment: {
+        id: adjustment.id,
+        type: adjustment.type,
+        quantity: adjustment.quantity,
+        unit: adjustment.unit,
+        itemName: adjustment.inventoryItem.name,
+        createdAt: adjustment.createdAt,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Invalid request data", details: error.errors },
+        { status: 400 }
+      );
+    }
+    console.error("Error logging prep:", error);
+    return NextResponse.json(
+      { error: "Failed to log prep" },
+      { status: 500 }
+    );
+  }
+}

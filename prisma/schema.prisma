@@ -1,0 +1,242 @@
+// Kitchen-Up Inventory Management System
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum AdjustmentType {
+  PREP
+  WASTE
+  MANUAL
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+  DISMISSED
+}
+
+// ============================================================================
+// MODELS
+// ============================================================================
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  pin        String
+  role       Role     @default(STAFF)
+  locationId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  location        Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  liveAdjustments LiveAdjustment[]
+  resolvedAlerts  Alert[]          @relation("AlertResolvedBy")
+  auditLogs       AuditLog[]
+
+  @@index([locationId])
+  @@index([email])
+  @@index([role])
+}
+
+model Location {
+  id                 String   @id @default(cuid())
+  name               String
+  toastLocationId    String?  @unique
+  toastClientId      String?
+  toastClientSecret  String?
+  writeBackEnabled   Boolean  @default(false)
+  alertWindowMinutes Int      @default(60)
+  createdAt          DateTime @default(now())
+
+  // Relations
+  users          User[]
+  inventoryItems InventoryItem[]
+  menuItems      MenuItem[]
+  saleEvents     SaleEvent[]
+  auditLogs      AuditLog[]
+
+  @@index([name])
+  @@index([toastLocationId])
+}
+
+model InventoryItem {
+  id          String   @id @default(cuid())
+  locationId  String
+  name        String
+  unit        String
+  parLevel    Float
+  safetyStock Float
+  toastItemId String?
+  category    String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  location          Location           @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  recipes           Recipe[]
+  liveAdjustments   LiveAdjustment[]
+  alerts            Alert[]
+  forecastSnapshots ForecastSnapshot[]
+
+  @@unique([locationId, name])
+  @@unique([locationId, toastItemId])
+  @@index([locationId])
+  @@index([category])
+  @@index([isActive])
+  @@index([toastItemId])
+}
+
+model MenuItem {
+  id              String   @id @default(cuid())
+  locationId      String
+  toastMenuItemId String
+  name            String
+  isActive        Boolean  @default(true)
+
+  // Relations
+  location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  recipes    Recipe[]
+  saleEvents SaleEvent[]
+
+  @@unique([locationId, toastMenuItemId])
+  @@index([locationId])
+  @@index([isActive])
+  @@index([toastMenuItemId])
+}
+
+model Recipe {
+  id              String @id @default(cuid())
+  menuItemId      String
+  inventoryItemId String
+  quantityUsed    Float
+  unit            String
+
+  // Relations
+  menuItem      MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, inventoryItemId])
+  @@index([menuItemId])
+  @@index([inventoryItemId])
+}
+
+model LiveAdjustment {
+  id              String         @id @default(cuid())
+  inventoryItemId String
+  userId          String
+  type            AdjustmentType
+  quantity        Float
+  unit            String
+  reason          String?
+  note            String?
+  createdAt       DateTime       @default(now())
+
+  // Relations
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model SaleEvent {
+  id           String   @id @default(cuid())
+  locationId   String
+  toastOrderId String
+  menuItemId   String
+  quantity     Int
+  createdAt    DateTime @default(now())
+
+  // Relations
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([toastOrderId, menuItemId])
+  @@index([locationId])
+  @@index([menuItemId])
+  @@index([toastOrderId])
+  @@index([createdAt])
+}
+
+model Alert {
+  id                   String      @id @default(cuid())
+  inventoryItemId      String
+  status               AlertStatus @default(ACTIVE)
+  predictedDepletionAt DateTime
+  resolvedAt           DateTime?
+  resolvedByUserId     String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  // Relations
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  resolvedBy    User?         @relation("AlertResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([inventoryItemId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([resolvedByUserId])
+  @@index([status, createdAt])
+  @@index([inventoryItemId, status])
+}
+
+model ForecastSnapshot {
+  id              String   @id @default(cuid())
+  inventoryItemId String
+  dayOfWeek       Int      // 0-6 (Sunday-Saturday)
+  avgSalesRate    Float    // Average units sold per hour
+  seasonality     Float    @default(1.0) // Multiplier for seasonal adjustment
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@unique([inventoryItemId, dayOfWeek])
+  @@index([inventoryItemId])
+  @@index([dayOfWeek])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  locationId String
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  details    Json
+  createdAt  DateTime @default(now())
+
+  // Relations
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([locationId])
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+}
