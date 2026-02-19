@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type Alert = {
   id: string;
@@ -21,11 +21,7 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ACTIVE" | "RESOLVED" | "all">("ACTIVE");
 
-  useEffect(() => {
-    fetchAlerts();
-  }, [filter]);
-
-  async function fetchAlerts() {
+  const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
       const params = filter !== "all" ? `?status=${filter}` : "";
@@ -39,7 +35,11 @@ export default function AlertsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filter]);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
 
   async function resolveAlert(alertId: string) {
     try {

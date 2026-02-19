@@ -32,6 +32,8 @@ export default function QuantityModal({
   useEffect(() => {
     if (isOpen) {
       const initialValue = mode === 'set' ? currentQuantity : 0;
+      // Resetting controlled-input state when modal opens — intentional setState in effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuantity(initialValue);
       setInputValue(String(initialValue));
     }

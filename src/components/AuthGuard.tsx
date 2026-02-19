@@ -18,6 +18,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const loggedIn = isLoggedIn();
+    // Syncing localStorage (external system) into state — intentional setState in effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAuthed(loggedIn);
     setReady(true);
 
