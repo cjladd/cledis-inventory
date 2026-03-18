@@ -2,11 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { setUser } from "@/lib/auth";
+import { signIn } from "next-auth/react";
 
 const ACCOUNTS = [
-  { label: "Manager",    email: "admin@restaurant.com",  hint: "PIN: 1234" },
-  { label: "Line Cook",  email: "staff@restaurant.com",  hint: "PIN: 0000" },
+  { label: "Manager",   email: "admin@restaurant.com", hint: "PIN: 1234" },
+  { label: "Line Cook", email: "staff@restaurant.com", hint: "PIN: 0000" },
 ];
 
 export default function LoginPage() {
@@ -33,20 +33,17 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email, pin }),
+      const result = await signIn("credentials", {
+        email,
+        pin,
+        redirect: false,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        triggerError(data.error ?? "Invalid credentials");
+      if (result?.error) {
+        triggerError("Invalid email or PIN");
         return;
       }
 
-      setUser(data.user);
       router.replace("/");
     } catch {
       triggerError("Connection error. Please try again.");
@@ -187,7 +184,7 @@ export default function LoginPage() {
         </form>
       </div>
 
-      <p className="mt-6 text-xs text-gray-400">Kitchen-Up Inventory v0.1 · Demo Mode</p>
+      <p className="mt-6 text-xs text-gray-400">Kitchen-Up Inventory v0.1</p>
     </div>
   );
 }

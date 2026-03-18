@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import ItemCard from "@/components/ItemCard";
 import QuantityModal from "@/components/QuantityModal";
-import { getUser } from "@/lib/auth";
 
 type InventoryItem = {
   id:           string;
@@ -25,8 +24,6 @@ export default function PrepPage() {
   const [search,        setSearch]        = useState("");
   const [selectedItem,  setSelectedItem]  = useState<InventoryItem | null>(null);
   const [submitting,    setSubmitting]    = useState(false);
-  const user = getUser();
-
   const fetchItems = async () => {
     setError(false);
     setLoading(true);
@@ -69,7 +66,6 @@ export default function PrepPage() {
           itemId:   selectedItem.id,
           quantity,
           unit:     selectedItem.unit,
-          userId:   user?.id,
         }),
       });
 

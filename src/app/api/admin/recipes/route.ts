@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-
-const LOCATION_ID = "loc-1";
-
-// ============================================================================
-// GET /api/admin/recipes
-// List all menu items with their recipe ingredient mappings.
-// ============================================================================
+import { requireApiRole, isSession } from "@/lib/api-auth";
 
 export async function GET() {
+  const auth = await requireApiRole(["ADMIN", "MANAGER"]);
+  if (!isSession(auth)) return auth;
+
   try {
     const menuItems = await prisma.menuItem.findMany({
-      where:   { locationId: LOCATION_ID },
+      where:   { locationId: auth.user.locationId },
       orderBy: { name: "asc" },
       select: {
         id:              true,
@@ -24,11 +21,7 @@ export async function GET() {
             quantityUsed: true,
             unit:         true,
             inventoryItem: {
-              select: {
-                id:   true,
-                name: true,
-                unit: true,
-              },
+              select: { id: true, name: true, unit: true },
             },
           },
         },
@@ -38,17 +31,9 @@ export async function GET() {
     return NextResponse.json({ menuItems });
   } catch (error) {
     console.error("Admin recipes GET error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch recipes" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch recipes" }, { status: 500 });
   }
 }
-
-// ============================================================================
-// POST /api/admin/recipes
-// Create or update a recipe ingredient mapping (upsert).
-// ============================================================================
 
 const CreateRecipeSchema = z.object({
   menuItemId:      z.string().min(1),
@@ -58,34 +43,29 @@ const CreateRecipeSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiRole(["ADMIN", "MANAGER"]);
+  if (!isSession(auth)) return auth;
+
   try {
     const body = await request.json();
     const data = CreateRecipeSchema.parse(body);
 
-    // Verify the menu item belongs to the demo location.
     const menuItem = await prisma.menuItem.findFirst({
-      where: { id: data.menuItemId, locationId: LOCATION_ID },
+      where: { id: data.menuItemId, locationId: auth.user.locationId },
       select: { id: true },
     });
 
     if (!menuItem) {
-      return NextResponse.json(
-        { error: "Menu item not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Menu item not found" }, { status: 404 });
     }
 
-    // Verify the inventory item belongs to the demo location.
     const inventoryItem = await prisma.inventoryItem.findFirst({
-      where: { id: data.inventoryItemId, locationId: LOCATION_ID },
+      where: { id: data.inventoryItemId, locationId: auth.user.locationId },
       select: { id: true },
     });
 
     if (!inventoryItem) {
-      return NextResponse.json(
-        { error: "Inventory item not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Inventory item not found" }, { status: 404 });
     }
 
     const recipe = await prisma.recipe.upsert({
@@ -95,10 +75,7 @@ export async function POST(request: Request) {
           inventoryItemId: data.inventoryItemId,
         },
       },
-      update: {
-        quantityUsed: data.quantityUsed,
-        unit:         data.unit,
-      },
+      update: { quantityUsed: data.quantityUsed, unit: data.unit },
       create: {
         menuItemId:      data.menuItemId,
         inventoryItemId: data.inventoryItemId,
@@ -109,70 +86,40 @@ export async function POST(request: Request) {
         id:           true,
         quantityUsed: true,
         unit:         true,
-        menuItem: {
-          select: {
-            id:   true,
-            name: true,
-          },
-        },
-        inventoryItem: {
-          select: {
-            id:   true,
-            name: true,
-            unit: true,
-          },
-        },
+        menuItem:      { select: { id: true, name: true } },
+        inventoryItem: { select: { id: true, name: true, unit: true } },
       },
     });
 
     return NextResponse.json({ recipe }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid request body", details: error.errors },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid request body", details: error.errors }, { status: 400 });
     }
     console.error("Admin recipes POST error:", error);
-    return NextResponse.json(
-      { error: "Failed to create recipe" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create recipe" }, { status: 500 });
   }
 }
 
-// ============================================================================
-// DELETE /api/admin/recipes?id=xxx
-// Delete a recipe ingredient mapping by id.
-// ============================================================================
-
 export async function DELETE(request: Request) {
+  const auth = await requireApiRole(["ADMIN", "MANAGER"]);
+  if (!isSession(auth)) return auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json(
-        { error: "Missing required query parameter: id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required query parameter: id" }, { status: 400 });
     }
 
-    // Verify the recipe exists and is scoped to the demo location via its
-    // parent menu item.
     const existing = await prisma.recipe.findFirst({
-      where: {
-        id,
-        menuItem: { locationId: LOCATION_ID },
-      },
+      where: { id, menuItem: { locationId: auth.user.locationId } },
       select: { id: true },
     });
 
     if (!existing) {
-      return NextResponse.json(
-        { error: "Recipe not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
     }
 
     await prisma.recipe.delete({ where: { id } });
@@ -180,9 +127,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Admin recipes DELETE error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete recipe" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete recipe" }, { status: 500 });
   }
 }

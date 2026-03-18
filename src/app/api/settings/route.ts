@@ -1,20 +1,22 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-
-const LOCATION_ID = "loc-1";
+import { requireApiAuth, requireApiRole, isSession } from "@/lib/api-auth";
 
 export async function GET() {
+  const auth = await requireApiAuth();
+  if (!isSession(auth)) return auth;
+
   try {
     const location = await prisma.location.findUnique({
-      where: { id: LOCATION_ID },
+      where: { id: auth.user.locationId },
       select: {
-        id:                  true,
-        name:                true,
-        toastLocationId:     true,
-        toastClientId:       true,
-        writeBackEnabled:    true,
-        alertWindowMinutes:  true,
+        id:                 true,
+        name:               true,
+        toastLocationId:    true,
+        toastClientId:      true,
+        writeBackEnabled:   true,
+        alertWindowMinutes: true,
       },
     });
 
@@ -43,12 +45,15 @@ const SettingsSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiRole(["ADMIN", "MANAGER"]);
+  if (!isSession(auth)) return auth;
+
   try {
     const body = await request.json();
     const data = SettingsSchema.parse(body);
 
     const updated = await prisma.location.update({
-      where: { id: LOCATION_ID },
+      where: { id: auth.user.locationId },
       data: {
         ...(data.writeBackEnabled   !== undefined && { writeBackEnabled:   data.writeBackEnabled }),
         ...(data.alertWindowMinutes !== undefined && { alertWindowMinutes: data.alertWindowMinutes }),

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { calculateCurrentStock } from "@/lib/inventory";
+import { requireApiAuth, isSession } from "@/lib/api-auth";
 
 const WasteReasonEnum = z.enum([
   "EXPIRED",
@@ -19,29 +20,22 @@ const WasteSchema = z.object({
   unit:     z.string().optional(),
   reason:   WasteReasonEnum,
   note:     z.string().optional(),
-  userId:   z.string().optional(),
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiAuth();
+  if (!isSession(auth)) return auth;
+
   try {
     const body = await request.json();
     const data = WasteSchema.parse(body);
 
-    const item = await prisma.inventoryItem.findUnique({
-      where: { id: data.itemId },
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id: data.itemId, locationId: auth.user.locationId },
     });
 
     if (!item) {
-      return NextResponse.json(
-        { error: "Inventory item not found" },
-        { status: 404 }
-      );
-    }
-
-    let userId = data.userId;
-    if (!userId) {
-      const firstUser = await prisma.user.findFirst();
-      userId = firstUser?.id ?? "system";
+      return NextResponse.json({ error: "Inventory item not found" }, { status: 404 });
     }
 
     const adjustment = await prisma.liveAdjustment.create({
@@ -52,7 +46,7 @@ export async function POST(request: Request) {
         reason:          data.reason,
         note:            data.note,
         inventoryItemId: data.itemId,
-        userId,
+        userId:          auth.user.id,
       },
       include: {
         inventoryItem: {
@@ -73,11 +67,10 @@ export async function POST(request: Request) {
           reason:   data.reason,
         },
         locationId: item.locationId,
-        userId,
+        userId:     auth.user.id,
       },
     });
 
-    // Use shared calculation (includes MANUAL + sales depletion)
     const { currentStock } = await calculateCurrentStock(data.itemId);
 
     if (currentStock <= item.safetyStock) {
@@ -116,9 +109,6 @@ export async function POST(request: Request) {
       );
     }
     console.error("Error logging waste:", error);
-    return NextResponse.json(
-      { error: "Failed to log waste" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to log waste" }, { status: 500 });
   }
 }

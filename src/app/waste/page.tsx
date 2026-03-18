@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import ItemCard from "@/components/ItemCard";
 import QuantityModal from "@/components/QuantityModal";
-import { getUser } from "@/lib/auth";
 
 type InventoryItem = {
   id:           string;
@@ -37,8 +36,6 @@ export default function WastePage() {
   const [selectedReason, setSelectedReason] = useState("SPOILED");
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const [submitting,     setSubmitting]     = useState(false);
-  const user = getUser();
-
   const fetchItems = async () => {
     setError(false);
     setLoading(true);
@@ -92,7 +89,6 @@ export default function WastePage() {
           quantity,
           unit:     selectedItem.unit,
           reason:   selectedReason,
-          userId:   user?.id,
         }),
       });
 

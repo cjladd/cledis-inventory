@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-
-const LOCATION_ID = "loc-1";
-
-// ============================================================================
-// GET /api/admin/users
-// List all users for the demo location. The pin hash is never returned.
-// ============================================================================
+import { requireApiRole, isSession } from "@/lib/api-auth";
 
 export async function GET() {
+  const auth = await requireApiRole(["ADMIN", "MANAGER"]);
+  if (!isSession(auth)) return auth;
+
   try {
     const users = await prisma.user.findMany({
-      where:   { locationId: LOCATION_ID },
+      where:   { locationId: auth.user.locationId },
       orderBy: { name: "asc" },
       select: {
         id:        true,
@@ -19,16 +16,13 @@ export async function GET() {
         email:     true,
         role:      true,
         createdAt: true,
-        // pin is intentionally omitted
+        // pin intentionally omitted
       },
     });
 
     return NextResponse.json({ users });
   } catch (error) {
     console.error("Admin users GET error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch users" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
   }
 }

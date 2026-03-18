@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { getUser, logout } from "@/lib/auth";
+import { useSession, signOut } from "next-auth/react";
 
 type LocationSettings = {
   id:                 string;
@@ -18,7 +18,7 @@ type LocationSettings = {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const user   = getUser();
+  const { data: session } = useSession();
 
   const [settings,         setSettings]         = useState<LocationSettings | null>(null);
   const [toastClientId,    setToastClientId]    = useState("");
@@ -71,8 +71,8 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut({ redirect: false });
     router.replace("/login");
   };
 
@@ -85,11 +85,11 @@ export default function SettingsPage() {
       </header>
 
       {/* User card */}
-      {user && (
+      {session?.user && (
         <section className="mb-6 p-4 bg-gray-50 rounded-xl flex items-center justify-between">
           <div>
-            <p className="font-semibold text-gray-900">{user.name}</p>
-            <p className="text-sm text-gray-500">{user.email} · {user.role}</p>
+            <p className="font-semibold text-gray-900">{session.user.name}</p>
+            <p className="text-sm text-gray-500">{session.user.email} · {(session.user as { role?: string }).role}</p>
           </div>
           <button
             onClick={handleLogout}

@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import ItemCard from "@/components/ItemCard";
 import AlertBanner from "@/components/AlertBanner";
-import { getUser } from "@/lib/auth";
 
 type InventoryItem = {
   id:           string;
@@ -52,7 +52,7 @@ export default function HomePage() {
   const [alerts,  setAlerts]  = useState<AlertItem[]>([]);
   const [stats,   setStats]   = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const user = getUser();
+  const { data: session } = useSession();
 
   useEffect(() => {
     async function fetchData() {
@@ -95,7 +95,7 @@ export default function HomePage() {
       <header className="mb-6">
         <p className="text-sm text-emerald-600 font-medium">{formatToday()}</p>
         <h1 className="text-2xl font-bold text-gray-900 mt-0.5">
-          {getGreeting()}, {user?.name?.split(" ")[0] ?? "Chef"} 👋
+          {getGreeting()}, {session?.user?.name?.split(" ")[0] ?? "Chef"} 👋
         </h1>
       </header>
 

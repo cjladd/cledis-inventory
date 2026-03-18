@@ -1,21 +1,25 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { computeStockFromData } from "@/lib/inventory";
+import { requireApiAuth, isSession } from "@/lib/api-auth";
 
 export async function GET(request: Request) {
+  const auth = await requireApiAuth();
+  if (!isSession(auth)) return auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const limit  = parseInt(searchParams.get("limit") || "20");
 
-    const where: Record<string, unknown> = {};
-    if (status && status !== "all") {
-      where.status = status;
-    }
+    const where: Record<string, unknown> = {
+      inventoryItem: { locationId: auth.user.locationId },
+    };
+    if (status && status !== "all") where.status = status;
 
     const alerts = await prisma.alert.findMany({
       where,
-      take: limit,
+      take:    limit,
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
       include: {
         inventoryItem: {
@@ -25,15 +29,11 @@ export async function GET(request: Request) {
             unit:        true,
             safetyStock: true,
             parLevel:    true,
-            liveAdjustments: {
-              select: { type: true, quantity: true },
-            },
+            liveAdjustments: { select: { type: true, quantity: true } },
             recipes: {
               include: {
                 menuItem: {
-                  include: {
-                    saleEvents: { select: { quantity: true } },
-                  },
+                  include: { saleEvents: { select: { quantity: true } } },
                 },
               },
             },
@@ -50,7 +50,6 @@ export async function GET(request: Request) {
         item.liveAdjustments,
         item.recipes
       );
-
       return {
         id:                  alert.id,
         status:              alert.status,
@@ -66,15 +65,9 @@ export async function GET(request: Request) {
       };
     });
 
-    return NextResponse.json({
-      alerts: enrichedAlerts,
-      total:  enrichedAlerts.length,
-    });
+    return NextResponse.json({ alerts: enrichedAlerts, total: enrichedAlerts.length });
   } catch (error) {
     console.error("Error fetching alerts:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch alerts" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch alerts" }, { status: 500 });
   }
 }

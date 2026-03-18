@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { isLoggedIn } from "@/lib/auth";
 import BottomNav from "@/components/BottomNav";
 import { Toaster } from "react-hot-toast";
 
@@ -11,27 +11,22 @@ const PUBLIC_PATHS = ["/login"];
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const [ready,  setReady]  = useState(false);
-  const [authed, setAuthed] = useState(false);
+  const { status } = useSession();
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isPublic    = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isLoading   = status === "loading";
+  const isAuthed    = status === "authenticated";
 
   useEffect(() => {
-    const loggedIn = isLoggedIn();
-    // Syncing localStorage (external system) into state — intentional setState in effect
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAuthed(loggedIn);
-    setReady(true);
-
-    if (!loggedIn && !isPublic) {
+    if (isLoading) return;
+    if (!isAuthed && !isPublic) {
       router.replace("/login");
-    } else if (loggedIn && pathname === "/login") {
+    } else if (isAuthed && pathname === "/login") {
       router.replace("/");
     }
-  }, [pathname, isPublic, router]);
+  }, [isLoading, isAuthed, isPublic, pathname, router]);
 
-  if (!ready) {
-    // Tiny loading state to prevent flash of unauthenticated content
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -50,10 +45,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           error:   { style: { background: "#ef4444", color: "#fff" } },
         }}
       />
-      <main className={`min-h-screen ${(authed || isPublic) && !isPublic ? "pb-20" : ""}`}>
+      <main className={`min-h-screen ${isAuthed && !isPublic ? "pb-20" : ""}`}>
         {children}
       </main>
-      {authed && !isPublic && <BottomNav />}
+      {isAuthed && !isPublic && <BottomNav />}
     </>
   );
 }

@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { computeStockFromData } from "@/lib/inventory";
+import { requireApiAuth, isSession } from "@/lib/api-auth";
 
 export async function GET() {
+  const auth = await requireApiAuth();
+  if (!isSession(auth)) return auth;
+
   try {
     const now        = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const locationId = auth.user.locationId;
 
     const [items, activeAlerts, todayPreps] = await Promise.all([
       prisma.inventoryItem.findMany({
-        where:   { isActive: true },
+        where:   { isActive: true, locationId },
         include: {
           liveAdjustments: { select: { type: true, quantity: true } },
           recipes: {
@@ -21,9 +26,18 @@ export async function GET() {
           },
         },
       }),
-      prisma.alert.count({ where: { status: "ACTIVE" } }),
+      prisma.alert.count({
+        where: {
+          status: "ACTIVE",
+          inventoryItem: { locationId },
+        },
+      }),
       prisma.liveAdjustment.count({
-        where: { type: "PREP", createdAt: { gte: startOfDay } },
+        where: {
+          type:      "PREP",
+          createdAt: { gte: startOfDay },
+          inventoryItem: { locationId },
+        },
       }),
     ]);
 
@@ -49,9 +63,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Stats error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch stats" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch stats" }, { status: 500 });
   }
 }
