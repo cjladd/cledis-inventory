@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { calculateCurrentStock } from "@/lib/inventory";
+import { createAlertIfNeeded } from "@/lib/forecast";
 import { requireApiAuth, isSession } from "@/lib/api-auth";
 
 const WasteReasonEnum = z.enum([
@@ -72,22 +73,7 @@ export async function POST(request: Request) {
     });
 
     const { currentStock } = await calculateCurrentStock(data.itemId);
-
-    if (currentStock <= item.safetyStock) {
-      const existingAlert = await prisma.alert.findFirst({
-        where: { inventoryItemId: data.itemId, status: "ACTIVE" },
-      });
-
-      if (!existingAlert) {
-        await prisma.alert.create({
-          data: {
-            inventoryItemId:     data.itemId,
-            status:              "ACTIVE",
-            predictedDepletionAt: new Date(Date.now() + 60 * 60 * 1000),
-          },
-        });
-      }
-    }
+    await createAlertIfNeeded(data.itemId, currentStock, item.safetyStock);
 
     return NextResponse.json({
       success: true,

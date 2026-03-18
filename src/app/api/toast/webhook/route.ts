@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import toastSdk, { ToastWebhookPayload } from "@/lib/toast-sdk";
 import { calculateCurrentStock } from "@/lib/inventory";
+import { createAlertIfNeeded } from "@/lib/forecast";
 
 /**
  * Toast Webhook Handler
@@ -113,23 +114,11 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
 
       for (const recipe of recipes) {
         const { currentStock } = await calculateCurrentStock(recipe.inventoryItem.id);
-
-        if (currentStock <= recipe.inventoryItem.safetyStock) {
-          const existingAlert = await prisma.alert.findFirst({
-            where: { inventoryItemId: recipe.inventoryItem.id, status: "ACTIVE" },
-          });
-
-          if (!existingAlert) {
-            await prisma.alert.create({
-              data: {
-                inventoryItemId:      recipe.inventoryItem.id,
-                status:               "ACTIVE",
-                predictedDepletionAt: new Date(Date.now() + 60 * 60 * 1000),
-              },
-            });
-            console.log(`[Toast Webhook] Created alert for ${recipe.inventoryItem.name}`);
-          }
-        }
+        await createAlertIfNeeded(
+          recipe.inventoryItem.id,
+          currentStock,
+          recipe.inventoryItem.safetyStock
+        );
       }
     }
   }

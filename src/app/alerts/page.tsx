@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
+import toast from "react-hot-toast";
 
 type Alert = {
   id: string;
@@ -17,9 +19,14 @@ type Alert = {
 };
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"ACTIVE" | "RESOLVED" | "all">("ACTIVE");
+  const { data: session } = useSession();
+  const sessionRole = (session?.user as { role?: string })?.role;
+  const canRecalculate = sessionRole === "ADMIN" || sessionRole === "MANAGER";
+
+  const [alerts,       setAlerts]       = useState<Alert[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [filter,       setFilter]       = useState<"ACTIVE" | "RESOLVED" | "all">("ACTIVE");
+  const [recalculating, setRecalculating] = useState(false);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -87,6 +94,22 @@ export default function AlertsPage() {
     return `${diffDays}d ago`;
   }
 
+  async function recalculateForecasts() {
+    setRecalculating(true);
+    try {
+      const res = await fetch("/api/inventory/forecast", { method: "POST" });
+      if (res.ok) {
+        toast.success("Forecasts updated");
+      } else {
+        toast.error("Failed to update forecasts");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setRecalculating(false);
+    }
+  }
+
   function formatETA(dateStr: string | null) {
     if (!dateStr) return "Unknown";
     const date = new Date(dateStr);
@@ -103,8 +126,22 @@ export default function AlertsPage() {
     <div className="px-4 pt-6 pb-4">
       {/* Header */}
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Alerts</h1>
-        <p className="text-sm text-gray-500">Items needing attention</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Alerts</h1>
+            <p className="text-sm text-gray-500">Items needing attention</p>
+          </div>
+          {canRecalculate && (
+            <button
+              onClick={recalculateForecasts}
+              disabled={recalculating}
+              className="px-3 py-2 text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl
+                         hover:bg-emerald-100 transition-colors disabled:opacity-50"
+            >
+              {recalculating ? "Updating…" : "Recalculate"}
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Filter Tabs */}
