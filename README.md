@@ -149,7 +149,7 @@ npm run lint
 
 ## Deployment
 
-### Vercel (Recommended)
+### Vercel
 
 1. Push to GitHub
 2. Import project in Vercel
