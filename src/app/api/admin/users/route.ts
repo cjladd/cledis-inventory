@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { requireApiAuth, requireApiRole, isSession } from "@/lib/api-auth";
+import { requireApiRole, isSession } from "@/lib/api-auth";
 
 // ============================================================================
 // GET /api/admin/users — list users for current location

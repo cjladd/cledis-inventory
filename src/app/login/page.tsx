@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
 const ACCOUNTS = [
-  { label: "Manager",   email: "admin@restaurant.com", hint: "PIN: 1234" },
-  { label: "Line Cook", email: "staff@restaurant.com", hint: "PIN: 0000" },
+  { label: "Manager",   email: "manager.elmhill@cledis.com", hint: "PIN: 1234" },
+  { label: "Line Cook", email: "staff.elmhill@cledis.com",   hint: "PIN: 0000" },
 ];
 
 export default function LoginPage() {

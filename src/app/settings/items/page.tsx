@@ -14,9 +14,9 @@ type InventoryItem = {
   isActive:    boolean;
 };
 
-const CATEGORIES = ["Protein", "Prep", "Sides", "Dairy", "Produce", "Staples", "Other"];
+const CATEGORIES = ["Protein", "Dairy", "Produce", "Bread", "Frozen", "Dry Goods", "Sauces", "Specialty"];
 
-const EMPTY_FORM = { name: "", unit: "", parLevel: 0, safetyStock: 0, category: "Prep" };
+const EMPTY_FORM = { name: "", unit: "", parLevel: 0, safetyStock: 0, category: "Protein" };
 
 export default function ItemsPage() {
   const [items,   setItems]   = useState<InventoryItem[]>([]);
