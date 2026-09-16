@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const data = WasteSchema.parse(body);
 
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: data.itemId, locationId: auth.user.locationId },
+      where: { id: data.itemId, locationId: auth.user.locationId, isActive: true },
     });
 
     if (!item) {

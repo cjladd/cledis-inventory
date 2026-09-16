@@ -42,8 +42,10 @@ Open [http://localhost:3000](http://localhost:3000) on your phone or browser.
 
 ### Default Login
 
-- **Manager**: admin@restaurant.com / PIN: 1234
-- **Staff**: staff@restaurant.com / PIN: 0000
+Seeded per location (`elmhill`, `bellevue`, `gulch`):
+
+- **Manager**: manager.elmhill@cledis.com / PIN: 1234
+- **Line Cook**: staff.elmhill@cledis.com / PIN: 0000
 
 ## Project Structure
 
@@ -123,7 +125,13 @@ await prisma.recipe.create({
 | `/api/inventory/prep` | POST | Log prep (add stock) |
 | `/api/inventory/waste` | POST | Log waste (remove stock) |
 | `/api/inventory/alerts` | GET | Get active alerts |
-| `/api/toast/webhook` | POST | Receive Toast webhooks |
+| `/api/inventory/forecast` | GET | Projected run-out times per item |
+| `/api/inventory/stats` | GET | Dashboard counts (low stock, alerts, preps today) |
+| `/api/admin/items` | GET/POST/PATCH/DELETE | Manage inventory items (DELETE retires, keeping history) |
+| `/api/admin/recipes` | GET/POST/PATCH/DELETE | Manage menu-item → inventory recipe links |
+| `/api/admin/users` | GET/POST/PATCH/DELETE | Manage staff accounts |
+| `/api/settings` | GET/PATCH | Location settings |
+| `/api/toast/webhook` | POST | Receive Toast webhooks (bypasses session auth, verified by HMAC) |
 
 ## Development
 
@@ -153,15 +161,11 @@ npm run lint
 
 1. Push to GitHub
 2. Import project in Vercel
-3. Add environment variables
-4. Deploy
+3. Provision a Postgres database and set `DATABASE_URL`
+4. Set `NEXTAUTH_URL` and `NEXTAUTH_SECRET` (`openssl rand -base64 32`)
+5. Deploy, then run `npm run db:push` and `npm run db:seed` against the deployed database
 
-### Docker
-
-```bash
-docker build -t kui-app .
-docker run -p 3000:3000 --env-file .env kui-app
-```
+There is no Dockerfile in this repo yet.
 
 ## License
 

@@ -317,8 +317,14 @@ export function verifyWebhookSignature(
   payload: string,
   signature: string
 ): boolean {
-  // No secret configured yet → dev/placeholder mode: accept but warn loudly.
+  // The webhook route is exempt from session auth, so an unset secret in
+  // production would leave it open to anyone. Fail closed there; only bypass
+  // verification in local dev.
   if (TOAST_CONFIG.webhookSecret === "PLACEHOLDER_WEBHOOK_SECRET") {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[Toast SDK] TOAST_WEBHOOK_SECRET is not set — rejecting webhook");
+      return false;
+    }
     console.warn("[Toast SDK] No webhook secret set — signature NOT verified (dev mode)");
     return true;
   }

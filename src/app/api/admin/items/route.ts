@@ -150,9 +150,24 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Inventory item not found" }, { status: 404 });
     }
 
-    await prisma.inventoryItem.delete({ where: { id } });
+    // Soft delete: a hard delete cascades to liveAdjustments, recipes, alerts and
+    // forecastSnapshots, destroying the item prep/waste history and its seasonality data.
+    const item = await prisma.inventoryItem.update({
+      where: { id },
+      data:  { isActive: false },
+      select: {
+        id:          true,
+        name:        true,
+        unit:        true,
+        parLevel:    true,
+        safetyStock: true,
+        category:    true,
+        isActive:    true,
+        createdAt:   true,
+      },
+    });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, item });
   } catch (error) {
     console.error("Admin items DELETE error:", error);
     return NextResponse.json({ error: "Failed to delete inventory item" }, { status: 500 });
