@@ -1,8 +1,11 @@
 import "next-auth";
 
+/** Mirrors the Prisma Role enum; kept as a union so session checks are exhaustive. */
+type UserRole = "ADMIN" | "MANAGER" | "STAFF";
+
 declare module "next-auth" {
   interface User {
-    role:       string;
+    role:       UserRole;
     locationId: string;
   }
 
@@ -11,7 +14,7 @@ declare module "next-auth" {
       id:         string;
       name:       string;
       email:      string;
-      role:       "ADMIN" | "MANAGER" | "STAFF";
+      role:       UserRole;
       locationId: string;
     };
   }
@@ -19,7 +22,8 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
-    role:       string;
+    id:         string;
+    role:       UserRole;
     locationId: string;
   }
 }

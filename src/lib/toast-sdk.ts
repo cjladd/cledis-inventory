@@ -7,6 +7,8 @@
  * Documentation: https://doc.toasttab.com/
  */
 
+import { createHmac, timingSafeEqual } from "crypto";
+
 // ============================================
 // CONFIGURATION (from environment variables)
 // ============================================
@@ -315,22 +317,33 @@ export function verifyWebhookSignature(
   payload: string,
   signature: string
 ): boolean {
-  console.log("[Toast SDK] Verifying webhook signature (PLACEHOLDER)");
-
+  // The webhook route is exempt from session auth, so an unset secret in
+  // production would leave it open to anyone. Fail closed there; only bypass
+  // verification in local dev.
   if (TOAST_CONFIG.webhookSecret === "PLACEHOLDER_WEBHOOK_SECRET") {
-    console.warn("[Toast SDK] Placeholder mode - webhook signature not verified");
-    return true; // Accept all webhooks in dev mode
+    if (process.env.NODE_ENV === "production") {
+      console.error("[Toast SDK] TOAST_WEBHOOK_SECRET is not set — rejecting webhook");
+      return false;
+    }
+    console.warn("[Toast SDK] No webhook secret set — signature NOT verified (dev mode)");
+    return true;
   }
 
-  // In production, implement HMAC-SHA256 verification
-  // const crypto = require('crypto');
-  // const expectedSignature = crypto
-  //   .createHmac('sha256', TOAST_CONFIG.webhookSecret)
-  //   .update(payload)
-  //   .digest('hex');
-  // return signature === expectedSignature;
+  if (!signature) return false;
 
-  return true;
+  // Toast signs the raw request body with HMAC-SHA256 keyed on the webhook
+  // secret, base64-encoded. (Confirm exact encoding against Toast docs before
+  // going live; if Toast sends hex, switch "base64" → "hex" below.)
+  const expected = createHmac("sha256", TOAST_CONFIG.webhookSecret)
+    .update(payload, "utf8")
+    .digest("base64");
+
+  const provided = Buffer.from(signature);
+  const computed = Buffer.from(expected);
+
+  // Length check first — timingSafeEqual throws on mismatched lengths.
+  if (provided.length !== computed.length) return false;
+  return timingSafeEqual(provided, computed);
 }
 
 export function parseWebhookPayload(rawBody: string): ToastWebhookPayload {

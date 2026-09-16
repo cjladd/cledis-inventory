@@ -10,6 +10,7 @@ type User = {
   name:      string;
   email:     string;
   role:      "ADMIN" | "MANAGER" | "STAFF";
+  isActive:  boolean;
   createdAt: string;
 };
 
@@ -30,8 +31,7 @@ const BLANK_FORM: FormData = { name: "", email: "", pin: "", role: "STAFF" };
 
 export default function UsersPage() {
   const { data: session } = useSession();
-  const sessionRole = (session?.user as { role?: string })?.role;
-  const isAdmin = sessionRole === "ADMIN";
+  const isAdmin = session?.user?.role === "ADMIN";
 
   const [users,          setUsers]          = useState<User[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -42,16 +42,33 @@ export default function UsersPage() {
   const [deleteTarget,   setDeleteTarget]   = useState<User | null>(null);
   const [deleting,       setDeleting]       = useState(false);
 
-  const loadUsers = () => {
-    setLoading(true);
-    fetch("/api/admin/users")
-      .then((r) => r.json())
-      .then((data) => setUsers(data.users ?? []))
-      .catch(() => toast.error("Failed to load users"))
-      .finally(() => setLoading(false));
-  };
+  // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
+  // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
+  // late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [showDeactivated, setShowDeactivated] = useState(false);
+  const loadUsers = () => setRefreshKey((k) => k + 1);
 
-  useEffect(loadUsers, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/users${showDeactivated ? "?includeInactive=true" : ""}`
+        );
+        if (!res.ok) throw new Error("fetch failed");
+        const data = await res.json();
+        if (!cancelled) setUsers(data.users ?? []);
+      } catch {
+        if (!cancelled) toast.error("Failed to load users");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [refreshKey, showDeactivated]);
 
   const openCreate = () => {
     setEditingUser(null);
@@ -115,6 +132,25 @@ export default function UsersPage() {
     }
   };
 
+  const handleRestore = async (user: User) => {
+    try {
+      const res = await fetch("/api/admin/users", {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ id: user.id, isActive: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error ?? "Failed to restore user");
+        return;
+      }
+      toast.success(`${user.name} restored`);
+      loadUsers();
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -122,10 +158,10 @@ export default function UsersPage() {
       const res = await fetch(`/api/admin/users?id=${deleteTarget.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? "Failed to delete user");
+        toast.error(data.error ?? "Failed to deactivate user");
         return;
       }
-      toast.success(`${deleteTarget.name} removed`);
+      toast.success(`${deleteTarget.name} deactivated`);
       setDeleteTarget(null);
       loadUsers();
     } catch {
@@ -156,6 +192,16 @@ export default function UsersPage() {
         </div>
       </header>
 
+      <label className="flex items-center gap-2 mb-4 text-sm text-gray-600 select-none">
+        <input
+          type="checkbox"
+          checked={showDeactivated}
+          onChange={(e) => setShowDeactivated(e.target.checked)}
+          className="w-4 h-4 rounded border-gray-300 text-emerald-500 focus:ring-emerald-500"
+        />
+        Show deactivated users
+      </label>
+
       {loading ? (
         <div className="space-y-3">
           {[1, 2].map((i) => (
@@ -179,6 +225,11 @@ export default function UsersPage() {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[user.role] ?? ROLE_COLORS.STAFF}`}>
                     {user.role}
                   </span>
+                  {!user.isActive && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      Deactivated
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-gray-500 truncate">{user.email}</p>
               </div>
@@ -189,12 +240,20 @@ export default function UsersPage() {
                 >
                   Edit
                 </button>
-                {isAdmin && (
+                {isAdmin && user.isActive && (
                   <button
                     onClick={() => setDeleteTarget(user)}
                     className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
                   >
-                    Delete
+                    Deactivate
+                  </button>
+                )}
+                {isAdmin && !user.isActive && (
+                  <button
+                    onClick={() => handleRestore(user)}
+                    className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Restore
                   </button>
                 )}
               </div>
@@ -284,9 +343,10 @@ export default function UsersPage() {
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-xl font-bold text-gray-900">Delete User?</h2>
+            <h2 className="text-xl font-bold text-gray-900">Deactivate user?</h2>
             <p className="text-gray-600">
-              Are you sure you want to remove <strong>{deleteTarget.name}</strong>? They will no longer be able to log in.
+              <strong>{deleteTarget.name}</strong> will no longer be able to log in.
+              Their prep and waste history is kept, and you can restore them later.
             </p>
             <div className="flex gap-3">
               <button
@@ -300,7 +360,7 @@ export default function UsersPage() {
                 disabled={deleting}
                 className="flex-1 py-3 bg-red-500 text-white font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50"
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {deleting ? "Deactivating…" : "Deactivate"}
               </button>
             </div>
           </div>

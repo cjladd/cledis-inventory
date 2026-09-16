@@ -14,9 +14,9 @@ type InventoryItem = {
   isActive:    boolean;
 };
 
-const CATEGORIES = ["Protein", "Prep", "Sides", "Dairy", "Produce", "Staples", "Other"];
+const CATEGORIES = ["Protein", "Dairy", "Produce", "Bread", "Frozen", "Dry Goods", "Sauces", "Specialty"];
 
-const EMPTY_FORM = { name: "", unit: "", parLevel: 0, safetyStock: 0, category: "Prep" };
+const EMPTY_FORM = { name: "", unit: "", parLevel: 0, safetyStock: 0, category: "Protein" };
 
 export default function ItemsPage() {
   const [items,   setItems]   = useState<InventoryItem[]>([]);
@@ -27,18 +27,31 @@ export default function ItemsPage() {
   const [saving,  setSaving]  = useState(false);
   const [search,  setSearch]  = useState("");
 
-  const fetchItems = async () => {
-    try {
-      const res = await fetch("/api/admin/items");
-      if (res.ok) setItems((await res.json()).items ?? []);
-    } catch {
-      toast.error("Failed to load items");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
+  // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
+  // late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [showRetired, setShowRetired] = useState(false);
+  const fetchItems = () => setRefreshKey((k) => k + 1);
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/items${showRetired ? "?includeInactive=true" : ""}`
+        );
+        if (res.ok && !cancelled) setItems((await res.json()).items ?? []);
+      } catch {
+        if (!cancelled) toast.error("Failed to load items");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [refreshKey, showRetired]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -95,15 +108,33 @@ export default function ItemsPage() {
     }
   };
 
-  const handleDelete = async (item: InventoryItem) => {
-    if (!confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
+  const handleRetire = async (item: InventoryItem) => {
+    if (!confirm(`Retire "${item.name}"? It stops showing in prep and waste, but its history is kept.`)) return;
     try {
       const res = await fetch(`/api/admin/items?id=${item.id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Item deleted");
+        toast.success("Item retired");
         fetchItems();
       } else {
-        toast.error("Delete failed");
+        toast.error("Retire failed");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
+  const handleRestore = async (item: InventoryItem) => {
+    try {
+      const res = await fetch("/api/admin/items", {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ id: item.id, isActive: true }),
+      });
+      if (res.ok) {
+        toast.success("Item restored");
+        fetchItems();
+      } else {
+        toast.error("Restore failed");
       }
     } catch {
       toast.error("Network error");
@@ -145,6 +176,16 @@ export default function ItemsPage() {
         </button>
       </div>
 
+      <label className="flex items-center gap-2 mb-4 text-sm text-gray-600 select-none">
+        <input
+          type="checkbox"
+          checked={showRetired}
+          onChange={(e) => setShowRetired(e.target.checked)}
+          className="w-4 h-4 rounded border-gray-300 text-emerald-500 focus:ring-emerald-500"
+        />
+        Show retired items
+      </label>
+
       {/* List */}
       {loading ? (
         <div className="space-y-3">
@@ -164,7 +205,14 @@ export default function ItemsPage() {
               className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl"
             >
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 truncate">{item.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-gray-900 truncate">{item.name}</p>
+                  {!item.isActive && (
+                    <span className="px-2 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 rounded-full flex-shrink-0">
+                      Retired
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500">
                   {item.category} · Par: {item.parLevel} {item.unit} · Safety: {item.safetyStock}
                 </p>
@@ -176,12 +224,21 @@ export default function ItemsPage() {
                 >
                   Edit
                 </button>
-                <button
-                  onClick={() => handleDelete(item)}
-                  className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  Delete
-                </button>
+                {item.isActive ? (
+                  <button
+                    onClick={() => handleRetire(item)}
+                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    Retire
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleRestore(item)}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Restore
+                  </button>
+                )}
               </div>
             </div>
           ))}

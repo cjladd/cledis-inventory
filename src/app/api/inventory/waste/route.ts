@@ -32,44 +32,59 @@ export async function POST(request: Request) {
     const data = WasteSchema.parse(body);
 
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: data.itemId, locationId: auth.user.locationId },
+      where: { id: data.itemId, locationId: auth.user.locationId, isActive: true },
     });
 
     if (!item) {
       return NextResponse.json({ error: "Inventory item not found" }, { status: 404 });
     }
 
-    const adjustment = await prisma.liveAdjustment.create({
-      data: {
-        type:            "WASTE",
-        quantity:        data.quantity,
-        unit:            data.unit ?? item.unit,
-        reason:          data.reason,
-        note:            data.note,
-        inventoryItemId: data.itemId,
-        userId:          auth.user.id,
-      },
-      include: {
-        inventoryItem: {
-          select: { name: true, unit: true, safetyStock: true },
-        },
-      },
-    });
+    if (data.unit && data.unit !== item.unit) {
+      return NextResponse.json(
+        { error: `Unit mismatch: ${item.name} is measured in ${item.unit}` },
+        { status: 400 }
+      );
+    }
 
-    await prisma.auditLog.create({
-      data: {
-        action:     "WASTE",
-        entityType: "LiveAdjustment",
-        entityId:   adjustment.id,
-        details: {
-          itemName: item.name,
-          quantity: data.quantity,
-          unit:     data.unit ?? item.unit,
-          reason:   data.reason,
+    // Deliberately not rejecting waste that exceeds the computed stock. That
+    // figure is an estimate until physical counts are modelled, and refusing
+    // the entry would push staff to stop logging waste at all -- losing the
+    // very data the forecasting depends on.
+    const adjustment = await prisma.$transaction(async (tx) => {
+      const created = await tx.liveAdjustment.create({
+        data: {
+          type:            "WASTE",
+          quantity:        data.quantity,
+          unit:            item.unit,
+          reason:          data.reason,
+          note:            data.note,
+          inventoryItemId: data.itemId,
+          userId:          auth.user.id,
         },
-        locationId: item.locationId,
-        userId:     auth.user.id,
-      },
+        include: {
+          inventoryItem: {
+            select: { name: true, unit: true, safetyStock: true },
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action:     "WASTE",
+          entityType: "LiveAdjustment",
+          entityId:   created.id,
+          details: {
+            itemName: item.name,
+            quantity: data.quantity,
+            unit:     item.unit,
+            reason:   data.reason,
+          },
+          locationId: item.locationId,
+          userId:     auth.user.id,
+        },
+      });
+
+      return created;
     });
 
     const { currentStock } = await calculateCurrentStock(data.itemId);

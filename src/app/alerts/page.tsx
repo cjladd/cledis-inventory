@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
+import { formatRelativeTime, formatTimeUntil } from "@/lib/utils";
 
 type Alert = {
   id: string;
@@ -20,33 +21,40 @@ type Alert = {
 
 export default function AlertsPage() {
   const { data: session } = useSession();
-  const sessionRole = (session?.user as { role?: string })?.role;
-  const canRecalculate = sessionRole === "ADMIN" || sessionRole === "MANAGER";
+  const canRecalculate =
+    session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
 
   const [alerts,       setAlerts]       = useState<Alert[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [filter,       setFilter]       = useState<"ACTIVE" | "RESOLVED" | "all">("ACTIVE");
   const [recalculating, setRecalculating] = useState(false);
 
-  const fetchAlerts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = filter !== "all" ? `?status=${filter}` : "";
-      const res = await fetch(`/api/inventory/alerts${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setAlerts(data.alerts || []);
-      }
-    } catch (error) {
-      console.error("Error fetching alerts:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [filter]);
+  // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
+  // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
+  // late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => setRefreshKey((k) => k + 1);
 
   useEffect(() => {
-    fetchAlerts();
-  }, [fetchAlerts]);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const params = filter !== "all" ? `?status=${filter}` : "";
+        const res = await fetch(`/api/inventory/alerts${params}`);
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setAlerts(data.alerts || []);
+        }
+      } catch (error) {
+        console.error("Error fetching alerts:", error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [filter, refreshKey]);
 
   async function resolveAlert(alertId: string) {
     try {
@@ -82,24 +90,14 @@ export default function AlertsPage() {
     }
   }
 
-  function formatTimeAgo(dateStr: string) {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
-  }
-
   async function recalculateForecasts() {
     setRecalculating(true);
     try {
       const res = await fetch("/api/inventory/forecast", { method: "POST" });
       if (res.ok) {
         toast.success("Forecasts updated");
+        // Predicted depletion times just changed, so pull the list again.
+        refresh();
       } else {
         toast.error("Failed to update forecasts");
       }
@@ -108,18 +106,6 @@ export default function AlertsPage() {
     } finally {
       setRecalculating(false);
     }
-  }
-
-  function formatETA(dateStr: string | null) {
-    if (!dateStr) return "Unknown";
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = date.getTime() - now.getTime();
-    if (diffMs < 0) return "Overdue";
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins} min`;
-    const diffHours = Math.floor(diffMins / 60);
-    return `${diffHours}h ${diffMins % 60}m`;
   }
 
   return (
@@ -189,8 +175,8 @@ export default function AlertsPage() {
                     {alert.inventoryItem.unit}
                   </p>
                   <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                    <span>ETA to out: {formatETA(alert.predictedDepletionAt)}</span>
-                    <span>Created: {formatTimeAgo(alert.createdAt)}</span>
+                    <span>ETA to out: {formatTimeUntil(alert.predictedDepletionAt)}</span>
+                    <span>Created: {formatRelativeTime(alert.createdAt)}</span>
                   </div>
                 </div>
                 {alert.status === "ACTIVE" && (

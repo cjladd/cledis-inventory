@@ -3,13 +3,21 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { requireApiRole, isSession } from "@/lib/api-auth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireApiRole(["ADMIN", "MANAGER"]);
   if (!isSession(auth)) return auth;
 
   try {
+    // Retired items are opt-in, so callers that just want a pick list (the
+    // recipes editor, for one) cannot accidentally offer a dropped item.
+    const includeInactive =
+      new URL(request.url).searchParams.get("includeInactive") === "true";
+
     const items = await prisma.inventoryItem.findMany({
-      where:   { locationId: auth.user.locationId },
+      where: {
+        locationId: auth.user.locationId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       orderBy: { name: "asc" },
       select: {
         id:          true,
@@ -150,9 +158,24 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Inventory item not found" }, { status: 404 });
     }
 
-    await prisma.inventoryItem.delete({ where: { id } });
+    // Soft delete: a hard delete cascades to liveAdjustments, recipes, alerts and
+    // forecastSnapshots, destroying the item prep/waste history and its seasonality data.
+    const item = await prisma.inventoryItem.update({
+      where: { id },
+      data:  { isActive: false },
+      select: {
+        id:          true,
+        name:        true,
+        unit:        true,
+        parLevel:    true,
+        safetyStock: true,
+        category:    true,
+        isActive:    true,
+        createdAt:   true,
+      },
+    });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, item });
   } catch (error) {
     console.error("Admin items DELETE error:", error);
     return NextResponse.json({ error: "Failed to delete inventory item" }, { status: 500 });

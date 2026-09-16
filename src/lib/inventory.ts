@@ -2,11 +2,19 @@
  * Inventory calculation utilities
  *
  * Shared functions for computing current stock levels across the app.
+ *
+ * Stock is derived as: par level, plus prep, minus waste and sales, counted
+ * from the start of the current service day. See lib/service-day.ts for why
+ * that boundary exists and what replaces it once physical counts are modelled.
  */
 
 import prisma from "./prisma";
+import { stockWindowStart } from "./service-day";
 
 export type StockStatus = "ok" | "low" | "critical" | "out";
+
+/** Below this fraction of par, an item reads as "low". */
+const LOW_STOCK_FRACTION = 0.5;
 
 export interface StockCalculation {
   currentStock: number;
@@ -17,7 +25,7 @@ export interface StockCalculation {
   salesDepletion: number;
 }
 
-// ─── Types for batch helper ──────────────────────────────────────────────────
+// --- Types for batch helper -------------------------------------------------
 
 export interface AdjustmentRow {
   type: "PREP" | "WASTE" | "MANUAL";
@@ -32,8 +40,29 @@ export interface RecipeWithSales {
 }
 
 /**
+ * Start of the window that stock is counted from, for one location.
+ *
+ * Every route that totals adjustments or sales must scope its queries to this
+ * instant. Without it the totals run over all history, so the number drifts
+ * further from reality every day and each request loads the entire ledger.
+ */
+export async function locationStockWindowStart(locationId: string): Promise<Date> {
+  const location = await prisma.location.findUnique({
+    where:  { id: locationId },
+    select: { timezone: true, dayStartHour: true },
+  });
+
+  return stockWindowStart({
+    timezone:     location?.timezone ?? "America/Chicago",
+    dayStartHour: location?.dayStartHour ?? 4,
+  });
+}
+
+/**
  * Compute stock from pre-fetched Prisma data (no extra DB calls).
- * Use this inside list routes to avoid N+1 queries.
+ *
+ * Callers are responsible for scoping `adjustments` and `recipes[].menuItem
+ * .saleEvents` to the stock window; this function just totals what it is given.
  */
 export function computeStockFromData(
   parLevel: number,
@@ -41,17 +70,15 @@ export function computeStockFromData(
   adjustments: AdjustmentRow[],
   recipes: RecipeWithSales[]
 ): StockCalculation {
-  const prepTotal = adjustments
-    .filter((a) => a.type === "PREP")
-    .reduce((sum, a) => sum + a.quantity, 0);
+  let prepTotal = 0;
+  let wasteTotal = 0;
+  let manualTotal = 0;
 
-  const wasteTotal = adjustments
-    .filter((a) => a.type === "WASTE")
-    .reduce((sum, a) => sum + a.quantity, 0);
-
-  const manualTotal = adjustments
-    .filter((a) => a.type === "MANUAL")
-    .reduce((sum, a) => sum + a.quantity, 0);
+  for (const a of adjustments) {
+    if (a.type === "PREP") prepTotal += a.quantity;
+    else if (a.type === "WASTE") wasteTotal += a.quantity;
+    else manualTotal += a.quantity;
+  }
 
   let salesDepletion = 0;
   for (const recipe of recipes) {
@@ -80,40 +107,51 @@ export function computeStockFromData(
 }
 
 /**
- * Calculate current stock level for a single inventory item (fetches its own data).
+ * Calculate current stock for a single item, fetching its own data.
+ *
+ * Prefer computeStockFromData inside list routes; this runs two queries and is
+ * meant for single-item paths.
  */
 export async function calculateCurrentStock(
   itemId: string
 ): Promise<StockCalculation> {
   const item = await prisma.inventoryItem.findUnique({
-    where: { id: itemId },
-    include: {
-      liveAdjustments: {
-        select: { type: true, quantity: true },
-      },
-      recipes: {
-        include: {
-          menuItem: {
-            include: {
-              saleEvents: {
-                select: { quantity: true },
-              },
-            },
-          },
-        },
-      },
-    },
+    where:  { id: itemId },
+    select: { parLevel: true, safetyStock: true, locationId: true },
   });
 
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const since = await locationStockWindowStart(item.locationId);
+
+  const [adjustments, recipes] = await Promise.all([
+    prisma.liveAdjustment.findMany({
+      where:  { inventoryItemId: itemId, createdAt: { gte: since } },
+      select: { type: true, quantity: true },
+    }),
+    prisma.recipe.findMany({
+      where:  { inventoryItemId: itemId },
+      select: {
+        quantityUsed: true,
+        menuItem: {
+          select: {
+            saleEvents: {
+              where:  { createdAt: { gte: since } },
+              select: { quantity: true },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
   return computeStockFromData(
     item.parLevel,
     item.safetyStock,
-    item.liveAdjustments,
-    item.recipes
+    adjustments,
+    recipes
   );
 }
 
@@ -127,74 +165,6 @@ export function getStockStatus(
 ): StockStatus {
   if (currentStock <= 0) return "out";
   if (currentStock <= safetyStock) return "critical";
-  if (currentStock <= parLevel * 0.5) return "low";
+  if (currentStock <= parLevel * LOW_STOCK_FRACTION) return "low";
   return "ok";
-}
-
-/**
- * Estimate time until stockout based on recent sales velocity.
- */
-export async function estimateDepletionTime(
-  itemId: string,
-  currentStock: number
-): Promise<Date | null> {
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-  const item = await prisma.inventoryItem.findUnique({
-    where: { id: itemId },
-    include: {
-      recipes: {
-        include: {
-          menuItem: {
-            include: {
-              saleEvents: {
-                where: { createdAt: { gte: oneDayAgo } },
-                select: { quantity: true, createdAt: true },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!item) return null;
-
-  let last24hUsage = 0;
-  for (const recipe of item.recipes) {
-    const sales = recipe.menuItem.saleEvents.reduce(
-      (sum, s) => sum + s.quantity,
-      0
-    );
-    last24hUsage += sales * recipe.quantityUsed;
-  }
-
-  if (last24hUsage <= 0) return null;
-
-  const hourlyRate = last24hUsage / 24;
-  const hoursUntilEmpty = currentStock / hourlyRate;
-
-  return new Date(Date.now() + hoursUntilEmpty * 60 * 60 * 1000);
-}
-
-/**
- * Check if an alert should be created for an item.
- */
-export async function shouldCreateAlert(
-  itemId: string,
-  alertWindowMinutes = 90
-): Promise<boolean> {
-  const { currentStock, status } = await calculateCurrentStock(itemId);
-
-  if (status === "critical" || status === "out") {
-    return true;
-  }
-
-  const depletionTime = await estimateDepletionTime(itemId, currentStock);
-  if (depletionTime) {
-    const windowEnd = new Date(Date.now() + alertWindowMinutes * 60 * 1000);
-    return depletionTime <= windowEnd;
-  }
-
-  return false;
 }

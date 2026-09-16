@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { computeStockFromData } from "@/lib/inventory";
+import { computeStockFromData, locationStockWindowStart } from "@/lib/inventory";
 import { requireApiAuth, isSession } from "@/lib/api-auth";
 
 export async function GET() {
@@ -8,19 +8,33 @@ export async function GET() {
   if (!isSession(auth)) return auth;
 
   try {
-    const now        = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const locationId = auth.user.locationId;
+
+    // One boundary for both the stock totals and the prep counter. These used
+    // to disagree: preps counted from server-local midnight while stock counted
+    // from the beginning of time.
+    const since = await locationStockWindowStart(locationId);
 
     const [items, activeAlerts, todayPreps] = await Promise.all([
       prisma.inventoryItem.findMany({
         where:   { isActive: true, locationId },
-        include: {
-          liveAdjustments: { select: { type: true, quantity: true } },
+        select: {
+          parLevel:    true,
+          safetyStock: true,
+          liveAdjustments: {
+            where:  { createdAt: { gte: since } },
+            select: { type: true, quantity: true },
+          },
           recipes: {
-            include: {
+            select: {
+              quantityUsed: true,
               menuItem: {
-                include: { saleEvents: { select: { quantity: true } } },
+                select: {
+                  saleEvents: {
+                    where:  { createdAt: { gte: since } },
+                    select: { quantity: true },
+                  },
+                },
               },
             },
           },
@@ -35,7 +49,7 @@ export async function GET() {
       prisma.liveAdjustment.count({
         where: {
           type:      "PREP",
-          createdAt: { gte: startOfDay },
+          createdAt: { gte: since },
           inventoryItem: { locationId },
         },
       }),
@@ -60,6 +74,7 @@ export async function GET() {
       outOfStock:    statusCounts.out,
       activeAlerts,
       todayPreps,
+      countedFrom: since.toISOString(),
     });
   } catch (error) {
     console.error("Stats error:", error);

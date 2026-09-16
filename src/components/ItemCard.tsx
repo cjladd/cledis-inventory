@@ -3,14 +3,12 @@
 export type StockStatus = 'ok' | 'low' | 'critical' | 'out';
 
 export interface ItemCardProps {
-  id?: string;
   name: string;
   currentStock: number;
   unit: string;
   status: StockStatus;
   category?: string;
   onClick?: () => void;
-  onPress?: (id: string) => void;
 }
 
 const statusConfig: Record<StockStatus, { bg: string; text: string; dot: string; label: string }> = {

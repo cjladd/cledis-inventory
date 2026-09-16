@@ -6,26 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Format a date for display
- */
-export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-/**
- * Format relative time (e.g., "5 minutes ago")
+ * Elapsed time, e.g. "just now", "5m ago", "3h ago", "2d ago".
  */
 export function formatRelativeTime(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
+  const diffMins = Math.floor((Date.now() - d.getTime()) / 60_000);
 
   if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
@@ -33,38 +18,23 @@ export function formatRelativeTime(date: Date | string): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
 
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
 }
 
 /**
- * Format time until (e.g., "2h 30m")
+ * Time remaining, e.g. "45m", "2h 30m", or "overdue" once the moment has passed.
+ * Returns "unknown" when there is no date to count down to.
  */
-export function formatTimeUntil(date: Date | string): string {
+export function formatTimeUntil(date: Date | string | null | undefined): string {
+  if (!date) return "unknown";
+
   const d = typeof date === "string" ? new Date(date) : date;
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
+  const diffMs = d.getTime() - Date.now();
 
   if (diffMs < 0) return "overdue";
 
-  const diffMins = Math.floor(diffMs / 60000);
+  const diffMins = Math.floor(diffMs / 60_000);
   if (diffMins < 60) return `${diffMins}m`;
 
-  const diffHours = Math.floor(diffMins / 60);
-  const remainingMins = diffMins % 60;
-  return `${diffHours}h ${remainingMins}m`;
-}
-
-/**
- * Debounce function
- */
-export function debounce<T extends (...args: unknown[]) => void>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
+  return `${Math.floor(diffMins / 60)}h ${diffMins % 60}m`;
 }

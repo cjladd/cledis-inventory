@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { computeStockFromData } from "@/lib/inventory";
+import { z } from "zod";
+import { computeStockFromData, locationStockWindowStart } from "@/lib/inventory";
 import { requireApiAuth, isSession } from "@/lib/api-auth";
+
+const QuerySchema = z.object({
+  status: z.enum(["ACTIVE", "RESOLVED", "DISMISSED", "all"]).optional(),
+  limit:  z.coerce.number().int().positive().max(100).default(20),
+});
 
 export async function GET(request: Request) {
   const auth = await requireApiAuth();
@@ -9,13 +15,28 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status");
-    const limit  = parseInt(searchParams.get("limit") || "20");
 
-    const where: Record<string, unknown> = {
+    // An unrecognised ?status= used to be handed straight to Prisma as an enum
+    // value, which threw and surfaced as a 500.
+    const parsed = QuerySchema.safeParse({
+      status: searchParams.get("status") ?? undefined,
+      limit:  searchParams.get("limit") ?? undefined,
+    });
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid query parameters", details: parsed.error.errors },
+        { status: 400 }
+      );
+    }
+
+    const { status, limit } = parsed.data;
+    const since = await locationStockWindowStart(auth.user.locationId);
+
+    const where = {
       inventoryItem: { locationId: auth.user.locationId },
+      ...(status && status !== "all" && { status }),
     };
-    if (status && status !== "all") where.status = status;
 
     const alerts = await prisma.alert.findMany({
       where,
@@ -29,11 +50,20 @@ export async function GET(request: Request) {
             unit:        true,
             safetyStock: true,
             parLevel:    true,
-            liveAdjustments: { select: { type: true, quantity: true } },
+            liveAdjustments: {
+              where:  { createdAt: { gte: since } },
+              select: { type: true, quantity: true },
+            },
             recipes: {
-              include: {
+              select: {
+                quantityUsed: true,
                 menuItem: {
-                  include: { saleEvents: { select: { quantity: true } } },
+                  select: {
+                    saleEvents: {
+                      where:  { createdAt: { gte: since } },
+                      select: { quantity: true },
+                    },
+                  },
                 },
               },
             },

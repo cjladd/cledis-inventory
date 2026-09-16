@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import ItemCard from "@/components/ItemCard";
 import QuantityModal from "@/components/QuantityModal";
@@ -28,7 +28,6 @@ const WASTE_REASONS = [
 
 export default function WastePage() {
   const [items,          setItems]          = useState<InventoryItem[]>([]);
-  const [filteredItems,  setFilteredItems]  = useState<InventoryItem[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState(false);
   const [search,         setSearch]         = useState("");
@@ -36,36 +35,44 @@ export default function WastePage() {
   const [selectedReason, setSelectedReason] = useState("SPOILED");
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const [submitting,     setSubmitting]     = useState(false);
-  const fetchItems = async () => {
-    setError(false);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/inventory");
-      if (!res.ok) throw new Error("fetch failed");
-      const data = await res.json();
-      setItems(data.items ?? []);
-      setFilteredItems(data.items ?? []);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchItems(); }, []);
+  // Bumping refreshKey re-runs the load. Keeping the fetch inside the effect
+  // (rather than calling an outer function) is what react-hooks expects, and
+  // the cancelled flag stops a late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => setRefreshKey((k) => k + 1);
 
   useEffect(() => {
-    const q = search.toLowerCase();
-    setFilteredItems(
-      q
-        ? items.filter(
-            (i) =>
-              i.name.toLowerCase().includes(q) ||
-              i.category?.toLowerCase().includes(q)
-          )
-        : items
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/inventory");
+        if (!res.ok) throw new Error("fetch failed");
+        const data = await res.json();
+        if (cancelled) return;
+        setItems(data.items ?? []);
+        setError(false);
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  // Derived from items + search, so it is computed during render rather than
+  // mirrored into state by an effect.
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        i.category?.toLowerCase().includes(q)
     );
-  }, [search, items]);
+  }, [items, search]);
 
   const handleItemClick = (item: InventoryItem) => {
     setSelectedItem(item);
@@ -94,13 +101,9 @@ export default function WastePage() {
 
       if (res.ok) {
         toast.success(`Logged ${quantity} ${selectedItem.unit} waste: ${selectedItem.name}`);
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === selectedItem.id
-              ? { ...item, currentStock: Math.max(0, item.currentStock - quantity) }
-              : item
-          )
-        );
+        // Refetch so `status` reflects the new level; the old optimistic update
+        // adjusted currentStock but left the status badge stale.
+        refresh();
       } else {
         const err = await res.json();
         toast.error(err.error ?? "Failed to log waste");
@@ -141,7 +144,7 @@ export default function WastePage() {
         <div className="text-center py-12">
           <p className="text-gray-500 mb-4">Failed to load inventory</p>
           <button
-            onClick={fetchItems}
+            onClick={refresh}
             className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600"
           >
             Retry
@@ -213,6 +216,7 @@ export default function WastePage() {
           onSubmit={handleSubmitWaste}
           itemName={selectedItem.name}
           unit={selectedItem.unit}
+          currentQuantity={selectedItem.currentStock}
           mode="subtract"
           isLoading={submitting}
         />

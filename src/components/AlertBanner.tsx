@@ -6,7 +6,9 @@ export interface LowStockItem {
   id: string;
   name: string;
   currentStock: number;
-  minStock: number;
+  /** Matches InventoryItem.safetyStock; was named minStock, which exists nowhere else. */
+  safetyStock: number;
+  unit?: string;
 }
 
 export interface AlertBannerProps {
@@ -73,7 +75,14 @@ export default function AlertBanner({
       <div className="px-4 pb-3">
         <ul className="space-y-2">
           {displayedItems.map((item) => {
-            const isCritical = item.currentStock <= item.minStock * 0.25;
+            // Same thresholds as getStockStatus, so the banner and the item
+            // cards cannot disagree about what "critical" means.
+            const severity =
+              item.currentStock <= 0
+                ? "Out"
+                : item.currentStock <= item.safetyStock
+                ? "Critical"
+                : "Low";
 
             return (
               <li
@@ -85,16 +94,20 @@ export default function AlertBanner({
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {item.name}
                   </p>
+                  <p className="text-xs text-gray-500">
+                    {item.currentStock}
+                    {item.unit ? ` ${item.unit}` : ''} left
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 ml-3">
                   <div
                     className={`px-2 py-1 rounded-md text-xs font-semibold ${
-                      isCritical
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700'
+                      severity === 'Low'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-red-100 text-red-700'
                     }`}
                   >
-                    {isCritical ? 'Critical' : 'Low'}
+                    {severity}
                   </div>
                 </div>
               </li>

@@ -34,8 +34,8 @@ export const authConfig: NextAuthConfig = {
     session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
-        (session.user as Record<string, unknown>).role = token.role;
-        (session.user as Record<string, unknown>).locationId = token.locationId;
+        session.user.role = token.role as "ADMIN" | "MANAGER" | "STAFF";
+        session.user.locationId = token.locationId as string;
       }
       return session;
     },
