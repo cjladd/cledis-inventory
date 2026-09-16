@@ -29,7 +29,17 @@ export async function GET() {
       !location.toastClientId.startsWith("PLACEHOLDER")
     );
 
-    return NextResponse.json({ ...location, isConfigured });
+    // hasClientSecret only reports presence — the secret itself never leaves the server.
+    const secret = await prisma.location.findUnique({
+      where:  { id: auth.user.locationId },
+      select: { toastClientSecret: true },
+    });
+
+    return NextResponse.json({
+      ...location,
+      isConfigured,
+      hasClientSecret: Boolean(secret?.toastClientSecret),
+    });
   } catch (error) {
     console.error("Settings GET error:", error);
     return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
@@ -44,7 +54,7 @@ const SettingsSchema = z.object({
   toastLocationId:    z.string().optional(),
 });
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request) {
   const auth = await requireApiRole(["ADMIN", "MANAGER"]);
   if (!isSession(auth)) return auth;
 
@@ -61,6 +71,15 @@ export async function POST(request: Request) {
         ...(data.toastClientSecret  !== undefined && { toastClientSecret:  data.toastClientSecret }),
         ...(data.toastLocationId    !== undefined && { toastLocationId:    data.toastLocationId }),
       },
+      // Explicit select: returning the whole row would leak toastClientSecret.
+      select: {
+        id:                 true,
+        name:               true,
+        toastLocationId:    true,
+        toastClientId:      true,
+        writeBackEnabled:   true,
+        alertWindowMinutes: true,
+      },
     });
 
     return NextResponse.json({ success: true, location: updated });
@@ -68,7 +87,7 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid data", details: error.errors }, { status: 400 });
     }
-    console.error("Settings POST error:", error);
+    console.error("Settings PATCH error:", error);
     return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });
   }
 }

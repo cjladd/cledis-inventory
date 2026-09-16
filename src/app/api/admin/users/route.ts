@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { requireApiRole, isSession } from "@/lib/api-auth";
+import { PIN_PATTERN, PIN_RULE_MESSAGE } from "@/lib/pin";
 
 // ============================================================================
 // GET /api/admin/users — list users for current location
@@ -39,7 +40,7 @@ export async function GET() {
 const CreateUserSchema = z.object({
   name:  z.string().min(1),
   email: z.string().email(),
-  pin:   z.string().regex(/^\d{4,6}$/, "PIN must be 4-6 digits"),
+  pin:   z.string().regex(PIN_PATTERN, PIN_RULE_MESSAGE),
   role:  z.enum(["ADMIN", "MANAGER", "STAFF"]),
 });
 
@@ -50,6 +51,16 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const data = CreateUserSchema.parse(body);
+
+    // A MANAGER may only create STAFF. Without this, a manager can mint an
+    // ADMIN account and log into it — a self-escalation path around the
+    // ADMIN-only guards on DELETE and role changes.
+    if (auth.user.role !== "ADMIN" && data.role !== "STAFF") {
+      return NextResponse.json(
+        { error: "Only an admin can create manager or admin accounts" },
+        { status: 403 }
+      );
+    }
 
     const existing = await prisma.user.findUnique({
       where:  { email: data.email },
@@ -98,7 +109,7 @@ const UpdateUserSchema = z.object({
   name:  z.string().min(1).optional(),
   email: z.string().email().optional(),
   role:  z.enum(["ADMIN", "MANAGER", "STAFF"]).optional(),
-  pin:   z.string().regex(/^\d{4,6}$/, "PIN must be 4-6 digits").optional(),
+  pin:   z.string().regex(PIN_PATTERN, PIN_RULE_MESSAGE).optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -116,6 +127,31 @@ export async function PATCH(request: Request) {
 
     if (!existing) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Nobody edits their own role — closes the self-escalation path even for
+    // an admin acting by mistake.
+    if (id === auth.user.id && fields.role && fields.role !== existing.role) {
+      return NextResponse.json(
+        { error: "You cannot change your own role" },
+        { status: 403 }
+      );
+    }
+
+    // A MANAGER may only act on STAFF, and may only assign STAFF.
+    if (auth.user.role !== "ADMIN") {
+      if (existing.role !== "STAFF") {
+        return NextResponse.json(
+          { error: "Only an admin can edit manager or admin accounts" },
+          { status: 403 }
+        );
+      }
+      if (fields.role && fields.role !== "STAFF") {
+        return NextResponse.json(
+          { error: "Only an admin can grant manager or admin access" },
+          { status: 403 }
+        );
+      }
     }
 
     // Prevent demoting the last admin

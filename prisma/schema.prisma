@@ -32,6 +32,11 @@ enum AlertStatus {
   DISMISSED
 }
 
+enum Language {
+  EN
+  ES
+}
+
 // ============================================================================
 // MODELS
 // ============================================================================
@@ -44,8 +49,13 @@ model User {
   role       Role     @default(STAFF)
   locationId String
   isActive   Boolean  @default(true)
+  language   Language @default(EN)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  // Login throttling - a 4-digit PIN is only 10k combinations.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
 
   // Relations
   location        Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -67,6 +77,11 @@ model Location {
   writeBackEnabled   Boolean  @default(false)
   alertWindowMinutes Int      @default(60)
   createdAt          DateTime @default(now())
+
+  // Service day runs from dayStartHour local time, not midnight UTC - a close
+  // after midnight still belongs to the previous business day.
+  timezone     String @default("America/Chicago")
+  dayStartHour Int    @default(4)
 
   // Relations
   users          User[]
@@ -108,11 +123,11 @@ model InventoryItem {
 }
 
 model MenuItem {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   locationId      String
   toastMenuItemId String
   name            String
-  isActive        Boolean  @default(true)
+  isActive        Boolean @default(true)
 
   // Relations
   location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -206,8 +221,8 @@ model Alert {
 model ForecastSnapshot {
   id              String   @id @default(cuid())
   inventoryItemId String
-  dayOfWeek       Int      // 0-6 (Sunday-Saturday)
-  avgSalesRate    Float    // Average units sold per hour
+  dayOfWeek       Int // 0-6 (Sunday-Saturday)
+  avgSalesRate    Float // Average units sold per hour
   seasonality     Float    @default(1.0) // Multiplier for seasonal adjustment
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

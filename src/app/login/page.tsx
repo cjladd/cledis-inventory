@@ -3,6 +3,14 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { PIN_MIN_LENGTH, PIN_MAX_LENGTH } from "@/lib/pin";
+
+/**
+ * Seeded demo accounts, with their PINs printed on screen. Gated behind an env
+ * flag so they can never reach a real deployment — set
+ * NEXT_PUBLIC_SHOW_DEMO_LOGINS=true locally or for a demo build.
+ */
+const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === "true";
 
 const ACCOUNTS = [
   { label: "Manager",   email: "manager.elmhill@cledis.com", hint: "PIN: 1234" },
@@ -11,7 +19,7 @@ const ACCOUNTS = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email,   setEmail]   = useState(ACCOUNTS[0].email);
+  const [email,   setEmail]   = useState(SHOW_DEMO_ACCOUNTS ? ACCOUNTS[0].email : "");
   const [pin,     setPin]     = useState("");
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,8 +32,12 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin.length < 4) {
-      triggerError("PIN must be at least 4 digits");
+    if (!email.trim()) {
+      triggerError("Enter your email");
+      return;
+    }
+    if (pin.length < PIN_MIN_LENGTH) {
+      triggerError(`PIN must be at least ${PIN_MIN_LENGTH} digits`);
       return;
     }
 
@@ -61,7 +73,7 @@ export default function LoginPage() {
   };
 
   const handlePinKey = (digit: string) => {
-    if (pin.length < 8) setPin((p) => p + digit);
+    if (pin.length < PIN_MAX_LENGTH) setPin((p) => p + digit);
   };
 
   const handlePinDelete = () => setPin((p) => p.slice(0, -1));
@@ -83,11 +95,22 @@ export default function LoginPage() {
       {/* Card */}
       <div className={`w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 ${shake ? "animate-shake" : ""}`}>
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Account selector */}
+          {/* Account selector — demo shortcut, or a plain email field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-2">
               Who are you?
             </label>
+            {!SHOW_DEMO_ACCOUNTS ? (
+              <input
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@cledis.com"
+                autoComplete="username"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            ) : (
             <div className="grid grid-cols-2 gap-2">
               {ACCOUNTS.map((acc) => (
                 <button
@@ -107,6 +130,7 @@ export default function LoginPage() {
                 </button>
               ))}
             </div>
+            )}
           </div>
 
           {/* PIN display */}
@@ -135,7 +159,7 @@ export default function LoginPage() {
               inputMode="numeric"
               pattern="[0-9]*"
               value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX_LENGTH))}
               className="sr-only"
               aria-label="PIN"
               autoComplete="current-password"
@@ -174,7 +198,7 @@ export default function LoginPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading || pin.length < 4}
+            disabled={loading || pin.length < PIN_MIN_LENGTH}
             className="w-full py-4 bg-emerald-500 text-white font-semibold rounded-xl
                        hover:bg-emerald-600 active:scale-95 transition-all
                        disabled:opacity-50 disabled:cursor-not-allowed"
