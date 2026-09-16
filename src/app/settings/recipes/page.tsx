@@ -29,22 +29,40 @@ export default function RecipesPage() {
   const [form,       setForm]       = useState({ inventoryItemId: "", quantityUsed: 0, unit: "" });
   const [saving,     setSaving]     = useState(false);
 
-  const fetchData = async () => {
-    try {
-      const [recipesRes, itemsRes] = await Promise.all([
-        fetch("/api/admin/recipes"),
-        fetch("/api/admin/items"),
-      ]);
-      if (recipesRes.ok) setMenuItems((await recipesRes.json()).menuItems ?? []);
-      if (itemsRes.ok)   setInvItems((await itemsRes.json()).items ?? []);
-    } catch {
-      toast.error("Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
+  // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
+  // late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const fetchData = () => setRefreshKey((k) => k + 1);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [recipesRes, itemsRes] = await Promise.all([
+          fetch("/api/admin/recipes"),
+          fetch("/api/admin/items"),
+        ]);
+        if (cancelled) return;
+
+        if (recipesRes.ok) setMenuItems((await recipesRes.json()).menuItems ?? []);
+        if (itemsRes.ok) {
+          const all: (InventoryItem & { isActive?: boolean })[] =
+            (await itemsRes.json()).items ?? [];
+          // The admin items endpoint returns retired items too; offering them
+          // as recipe ingredients would resurrect items the kitchen dropped.
+          setInvItems(all.filter((i) => i.isActive !== false));
+        }
+      } catch {
+        if (!cancelled) toast.error("Failed to load data");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [refreshKey]);
 
   const handleAddIngredient = async (menuItemId: string) => {
     if (!form.inventoryItemId || form.quantityUsed <= 0) {

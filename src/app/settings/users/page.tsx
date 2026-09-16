@@ -42,16 +42,30 @@ export default function UsersPage() {
   const [deleteTarget,   setDeleteTarget]   = useState<User | null>(null);
   const [deleting,       setDeleting]       = useState(false);
 
-  const loadUsers = () => {
-    setLoading(true);
-    fetch("/api/admin/users")
-      .then((r) => r.json())
-      .then((data) => setUsers(data.users ?? []))
-      .catch(() => toast.error("Failed to load users"))
-      .finally(() => setLoading(false));
-  };
+  // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
+  // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
+  // late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const loadUsers = () => setRefreshKey((k) => k + 1);
 
-  useEffect(loadUsers, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/users");
+        if (!res.ok) throw new Error("fetch failed");
+        const data = await res.json();
+        if (!cancelled) setUsers(data.users ?? []);
+      } catch {
+        if (!cancelled) toast.error("Failed to load users");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [refreshKey]);
 
   const openCreate = () => {
     setEditingUser(null);

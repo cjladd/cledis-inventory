@@ -56,16 +56,6 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
     return;
   }
 
-  // Idempotency check
-  const existingSale = await prisma.saleEvent.findFirst({
-    where: { toastOrderId: orderGuid },
-  });
-
-  if (existingSale) {
-    console.log(`[Toast Webhook] Order ${orderGuid} already processed`);
-    return;
-  }
-
   const order = await toastSdk.fetchOrder(orderGuid);
   if (!order) {
     console.warn(`[Toast Webhook] Could not fetch order ${orderGuid}`);
@@ -73,7 +63,8 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
   }
 
   const location = await prisma.location.findFirst({
-    where: { toastLocationId: payload.restaurantGuid },
+    where:  { toastLocationId: payload.restaurantGuid },
+    select: { id: true },
   });
 
   if (!location) {
@@ -81,46 +72,86 @@ async function handleOrderEvent(payload: ToastWebhookPayload) {
     return;
   }
 
+  // Toast sends ORDER_CREATED, then ORDER_UPDATED and ORDER_CLOSED for the same
+  // order, and each payload carries the full order. So we total the order as it
+  // now stands and upsert to that total: re-running an event is a no-op, and
+  // items added after creation are still picked up. (The previous code returned
+  // early if any row existed for the order, so nothing after the first event
+  // was ever recorded.)
+  const quantityByGuid = new Map<string, number>();
   for (const check of order.checks ?? []) {
     for (const selection of check.selections ?? []) {
-      const menuItem = await prisma.menuItem.findFirst({
+      // One order can list the same item on several lines; summing them first
+      // also avoids colliding on the (toastOrderId, menuItemId) unique index.
+      quantityByGuid.set(
+        selection.menuItemGuid,
+        (quantityByGuid.get(selection.menuItemGuid) ?? 0) + selection.quantity
+      );
+    }
+  }
+
+  if (quantityByGuid.size === 0) return;
+
+  const menuItems = await prisma.menuItem.findMany({
+    where: {
+      locationId:      location.id,
+      toastMenuItemId: { in: [...quantityByGuid.keys()] },
+    },
+    select: {
+      id:              true,
+      name:            true,
+      toastMenuItemId: true,
+      recipes: { select: { inventoryItemId: true } },
+    },
+  });
+
+  const known = new Set(menuItems.map((m) => m.toastMenuItemId));
+  for (const guid of quantityByGuid.keys()) {
+    if (!known.has(guid)) console.log(`[Toast Webhook] Unknown menu item: ${guid}`);
+  }
+
+  if (menuItems.length === 0) return;
+
+  await prisma.$transaction(
+    menuItems.map((menuItem) => {
+      const quantity = quantityByGuid.get(menuItem.toastMenuItemId) ?? 0;
+      return prisma.saleEvent.upsert({
         where: {
-          locationId:      location.id,
-          toastMenuItemId: selection.menuItemGuid,
+          toastOrderId_menuItemId: {
+            toastOrderId: orderGuid,
+            menuItemId:   menuItem.id,
+          },
         },
-      });
-
-      if (!menuItem) {
-        console.log(`[Toast Webhook] Unknown menu item: ${selection.menuItemGuid}`);
-        continue;
-      }
-
-      await prisma.saleEvent.create({
-        data: {
+        update: { quantity },
+        create: {
           toastOrderId: orderGuid,
-          quantity:     selection.quantity,
+          quantity,
           locationId:   location.id,
           menuItemId:   menuItem.id,
         },
       });
+    })
+  );
 
-      console.log(`[Toast Webhook] Recorded sale: ${selection.quantity}x ${menuItem.name}`);
+  console.log(
+    `[Toast Webhook] Order ${orderGuid}: recorded ${menuItems.length} line item(s)`
+  );
 
-      // Check alerts using the shared accurate calculation
-      const recipes = await prisma.recipe.findMany({
-        where:   { menuItemId: menuItem.id },
-        include: { inventoryItem: true },
-      });
+  // One alert check per affected inventory item, not one per order line.
+  const affected = new Set<string>();
+  for (const menuItem of menuItems) {
+    for (const recipe of menuItem.recipes) affected.add(recipe.inventoryItemId);
+  }
 
-      for (const recipe of recipes) {
-        const { currentStock } = await calculateCurrentStock(recipe.inventoryItem.id);
-        await createAlertIfNeeded(
-          recipe.inventoryItem.id,
-          currentStock,
-          recipe.inventoryItem.safetyStock
-        );
-      }
-    }
+  for (const inventoryItemId of affected) {
+    const item = await prisma.inventoryItem.findUnique({
+      where:  { id: inventoryItemId },
+      select: { safetyStock: true },
+    });
+    if (!item) continue;
+
+    const { currentStock } = await calculateCurrentStock(inventoryItemId);
+    await createAlertIfNeeded(inventoryItemId, currentStock, item.safetyStock);
   }
 }
 

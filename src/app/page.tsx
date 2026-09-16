@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import ItemCard from "@/components/ItemCard";
 import AlertBanner from "@/components/AlertBanner";
@@ -19,7 +20,13 @@ type InventoryItem = {
 
 type AlertItem = {
   id:            string;
-  inventoryItem: { id: string; name: string };
+  inventoryItem: {
+    id:           string;
+    name:         string;
+    unit:         string;
+    currentStock: number;
+    safetyStock:  number;
+  };
   predictedDepletionAt: string | null;
 };
 
@@ -53,6 +60,7 @@ export default function HomePage() {
   const [stats,   setStats]   = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const { data: session } = useSession();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchData() {
@@ -82,11 +90,14 @@ export default function HomePage() {
     .sort((a, b) => severityOrder[a.status] - severityOrder[b.status])
     .slice(0, 5);
 
+  // These were hardcoded to 0, which made every banner row read "Critical".
+  // The alerts endpoint already returns real stock figures.
   const lowStockBanner = alerts.map((a) => ({
     id:           a.inventoryItem.id,
     name:         a.inventoryItem.name,
-    currentStock: 0,
-    minStock:     0,
+    currentStock: a.inventoryItem.currentStock,
+    safetyStock:  a.inventoryItem.safetyStock,
+    unit:         a.inventoryItem.unit,
   }));
 
   return (
@@ -204,7 +215,7 @@ export default function HomePage() {
                 unit={item.unit}
                 status={item.status}
                 category={item.category ?? undefined}
-                onClick={() => {}}
+                onClick={() => router.push("/prep")}
               />
             ))}
           </div>

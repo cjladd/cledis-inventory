@@ -27,18 +27,28 @@ export default function ItemsPage() {
   const [saving,  setSaving]  = useState(false);
   const [search,  setSearch]  = useState("");
 
-  const fetchItems = async () => {
-    try {
-      const res = await fetch("/api/admin/items");
-      if (res.ok) setItems((await res.json()).items ?? []);
-    } catch {
-      toast.error("Failed to load items");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
+  // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
+  // late response from setting state after unmount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const fetchItems = () => setRefreshKey((k) => k + 1);
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/items");
+        if (res.ok && !cancelled) setItems((await res.json()).items ?? []);
+      } catch {
+        if (!cancelled) toast.error("Failed to load items");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [refreshKey]);
 
   const openAdd = () => {
     setEditItem(null);
