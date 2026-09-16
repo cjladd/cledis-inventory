@@ -3,13 +3,21 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { requireApiRole, isSession } from "@/lib/api-auth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireApiRole(["ADMIN", "MANAGER"]);
   if (!isSession(auth)) return auth;
 
   try {
+    // Retired items are opt-in, so callers that just want a pick list (the
+    // recipes editor, for one) cannot accidentally offer a dropped item.
+    const includeInactive =
+      new URL(request.url).searchParams.get("includeInactive") === "true";
+
     const items = await prisma.inventoryItem.findMany({
-      where:   { locationId: auth.user.locationId },
+      where: {
+        locationId: auth.user.locationId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       orderBy: { name: "asc" },
       select: {
         id:          true,

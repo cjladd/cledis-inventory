@@ -31,7 +31,7 @@ cp .env.example .env
 
 # Set up database
 npm run db:generate
-npm run db:push
+npm run db:migrate
 npm run db:seed
 
 # Start development server
@@ -46,6 +46,10 @@ Seeded per location (`elmhill`, `bellevue`, `gulch`):
 
 - **Manager**: manager.elmhill@cledis.com / PIN: 1234
 - **Line Cook**: staff.elmhill@cledis.com / PIN: 0000
+
+These shortcuts only appear on the login screen when
+`NEXT_PUBLIC_SHOW_DEMO_LOGINS=true`. Without it the form asks for an email,
+which is what any real deployment should do.
 
 ## Project Structure
 
@@ -80,6 +84,8 @@ cledis-inventory/
 | `TOAST_CLIENT_ID` | Toast API client ID |
 | `TOAST_CLIENT_SECRET` | Toast API client secret |
 | `TOAST_LOCATION_ID` | Your Toast location ID |
+| `TOAST_WEBHOOK_SECRET` | Webhook signing secret (required in production) |
+| `NEXT_PUBLIC_SHOW_DEMO_LOGINS` | Show seeded demo accounts on the login screen |
 
 ### Toast Integration
 
@@ -145,15 +151,26 @@ npm run db:generate
 # Push schema changes
 npm run db:push
 
-# Run migrations
+# Create and apply a migration (development)
 npm run db:migrate
+
+# Apply existing migrations (production)
+npm run db:deploy
 
 # Open Prisma Studio
 npm run db:studio
 
-# Lint code
+# Lint, typecheck, test
 npm run lint
+npm run typecheck
+npm test
 ```
+
+### Database migrations
+
+Schema changes go through `prisma/migrations`, not `db:push`. If you are
+pointing at a database that already has the schema but no migration history,
+baseline it once with `npm run db:baseline` before running `db:deploy`.
 
 ## Deployment
 
@@ -163,9 +180,19 @@ npm run lint
 2. Import project in Vercel
 3. Provision a Postgres database and set `DATABASE_URL`
 4. Set `NEXTAUTH_URL` and `NEXTAUTH_SECRET` (`openssl rand -base64 32`)
-5. Deploy, then run `npm run db:push` and `npm run db:seed` against the deployed database
+5. Set `TOAST_WEBHOOK_SECRET` — the webhook rejects every request in production without it
+6. Deploy, then run `npm run db:deploy` and `npm run db:seed` against the deployed database
+
+Do not set `NEXT_PUBLIC_SHOW_DEMO_LOGINS` in a real deployment.
 
 There is no Dockerfile in this repo yet.
+
+## Design decisions
+
+`docs/decisions.md` records why the system is shaped the way it is, what is
+deliberately not built yet, and the known gaps between the current data model
+and how the kitchen actually works. Read it before changing the stock
+calculation or the Toast integration.
 
 ## License
 

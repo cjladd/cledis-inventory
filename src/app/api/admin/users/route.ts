@@ -9,19 +9,26 @@ import { PIN_PATTERN, PIN_RULE_MESSAGE } from "@/lib/pin";
 // GET /api/admin/users — list users for current location
 // ============================================================================
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireApiRole(["ADMIN", "MANAGER"]);
   if (!isSession(auth)) return auth;
 
   try {
+    const includeInactive =
+      new URL(request.url).searchParams.get("includeInactive") === "true";
+
     const users = await prisma.user.findMany({
-      where:   { locationId: auth.user.locationId, isActive: true },
+      where: {
+        locationId: auth.user.locationId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       orderBy: { name: "asc" },
       select: {
         id:        true,
         name:      true,
         email:     true,
         role:      true,
+        isActive:  true,
         createdAt: true,
       },
     });
@@ -105,10 +112,11 @@ export async function POST(request: Request) {
 // ============================================================================
 
 const UpdateUserSchema = z.object({
-  id:    z.string().min(1),
-  name:  z.string().min(1).optional(),
-  email: z.string().email().optional(),
-  role:  z.enum(["ADMIN", "MANAGER", "STAFF"]).optional(),
+  id:       z.string().min(1),
+  name:     z.string().min(1).optional(),
+  email:    z.string().email().optional(),
+  role:     z.enum(["ADMIN", "MANAGER", "STAFF"]).optional(),
+  isActive: z.boolean().optional(),
   pin:   z.string().regex(PIN_PATTERN, PIN_RULE_MESSAGE).optional(),
 });
 
@@ -121,7 +129,7 @@ export async function PATCH(request: Request) {
     const { id, pin, ...fields } = UpdateUserSchema.parse(body);
 
     const existing = await prisma.user.findFirst({
-      where: { id, locationId: auth.user.locationId, isActive: true },
+      where:  { id, locationId: auth.user.locationId },
       select: { id: true, role: true },
     });
 
@@ -185,6 +193,7 @@ export async function PATCH(request: Request) {
         name:      true,
         email:     true,
         role:      true,
+        isActive:  true,
         createdAt: true,
       },
     });

@@ -31,6 +31,7 @@ export default function ItemsPage() {
   // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
   // late response from setting state after unmount.
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showRetired, setShowRetired] = useState(false);
   const fetchItems = () => setRefreshKey((k) => k + 1);
 
   useEffect(() => {
@@ -38,7 +39,9 @@ export default function ItemsPage() {
 
     (async () => {
       try {
-        const res = await fetch("/api/admin/items");
+        const res = await fetch(
+          `/api/admin/items${showRetired ? "?includeInactive=true" : ""}`
+        );
         if (res.ok && !cancelled) setItems((await res.json()).items ?? []);
       } catch {
         if (!cancelled) toast.error("Failed to load items");
@@ -48,7 +51,7 @@ export default function ItemsPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, showRetired]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -172,6 +175,16 @@ export default function ItemsPage() {
           + Add Item
         </button>
       </div>
+
+      <label className="flex items-center gap-2 mb-4 text-sm text-gray-600 select-none">
+        <input
+          type="checkbox"
+          checked={showRetired}
+          onChange={(e) => setShowRetired(e.target.checked)}
+          className="w-4 h-4 rounded border-gray-300 text-emerald-500 focus:ring-emerald-500"
+        />
+        Show retired items
+      </label>
 
       {/* List */}
       {loading ? (

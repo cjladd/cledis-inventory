@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
+import { formatRelativeTime, formatTimeUntil } from "@/lib/utils";
 
 type Alert = {
   id: string;
@@ -20,8 +21,8 @@ type Alert = {
 
 export default function AlertsPage() {
   const { data: session } = useSession();
-  const sessionRole = (session?.user as { role?: string })?.role;
-  const canRecalculate = sessionRole === "ADMIN" || sessionRole === "MANAGER";
+  const canRecalculate =
+    session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
 
   const [alerts,       setAlerts]       = useState<Alert[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -89,18 +90,6 @@ export default function AlertsPage() {
     }
   }
 
-  function formatTimeAgo(dateStr: string) {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
-  }
-
   async function recalculateForecasts() {
     setRecalculating(true);
     try {
@@ -117,18 +106,6 @@ export default function AlertsPage() {
     } finally {
       setRecalculating(false);
     }
-  }
-
-  function formatETA(dateStr: string | null) {
-    if (!dateStr) return "Unknown";
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = date.getTime() - now.getTime();
-    if (diffMs < 0) return "Overdue";
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins} min`;
-    const diffHours = Math.floor(diffMins / 60);
-    return `${diffHours}h ${diffMins % 60}m`;
   }
 
   return (
@@ -198,8 +175,8 @@ export default function AlertsPage() {
                     {alert.inventoryItem.unit}
                   </p>
                   <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                    <span>ETA to out: {formatETA(alert.predictedDepletionAt)}</span>
-                    <span>Created: {formatTimeAgo(alert.createdAt)}</span>
+                    <span>ETA to out: {formatTimeUntil(alert.predictedDepletionAt)}</span>
+                    <span>Created: {formatRelativeTime(alert.createdAt)}</span>
                   </div>
                 </div>
                 {alert.status === "ACTIVE" && (

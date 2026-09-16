@@ -47,13 +47,9 @@ export default function RecipesPage() {
         if (cancelled) return;
 
         if (recipesRes.ok) setMenuItems((await recipesRes.json()).menuItems ?? []);
-        if (itemsRes.ok) {
-          const all: (InventoryItem & { isActive?: boolean })[] =
-            (await itemsRes.json()).items ?? [];
-          // The admin items endpoint returns retired items too; offering them
-          // as recipe ingredients would resurrect items the kitchen dropped.
-          setInvItems(all.filter((i) => i.isActive !== false));
-        }
+        // /api/admin/items returns only active items unless asked otherwise,
+        // so retired items cannot be offered as recipe ingredients.
+        if (itemsRes.ok) setInvItems((await itemsRes.json()).items ?? []);
       } catch {
         if (!cancelled) toast.error("Failed to load data");
       } finally {

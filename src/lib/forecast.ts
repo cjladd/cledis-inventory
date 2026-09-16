@@ -1,5 +1,5 @@
 /**
- * Forecasting engine — moving averages + day-of-week seasonality.
+ * Forecasting engine - moving averages + day-of-week seasonality.
  *
  * Uses SaleEvent data to calculate average daily depletion rates and
  * day-of-week patterns, then predicts when stock will hit zero.
@@ -12,26 +12,51 @@ export interface DayOfWeekRates {
   overallAvg: number;
 }
 
-export interface ForecastResult {
-  avgDailyDepletion:  number;
-  dayOfWeekRates:     number[];
-  seasonality:        number[]; // multiplier per day-of-week
-  predictedDepletionAt: Date | null;
+const FLAT_SEASONALITY = [1, 1, 1, 1, 1, 1, 1];
+const DEFAULT_WINDOW_WEEKS = 4;
+const MAX_FORECAST_DAYS = 30;
+
+const emptyRates = (): DayOfWeekRates => ({
+  rates:      [0, 0, 0, 0, 0, 0, 0],
+  overallAvg: 0,
+});
+
+/** How many of each weekday fall inside the lookback window. */
+function weekdayCounts(since: Date, windowWeeks: number): number[] {
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  const msPerDay = 24 * 60 * 60 * 1000;
+
+  for (let i = 0; i < windowWeeks * 7; i++) {
+    counts[new Date(since.getTime() + i * msPerDay).getDay()]++;
+  }
+  return counts;
+}
+
+function ratesFromTotals(dowTotals: number[], dowCounts: number[]): DayOfWeekRates {
+  const rates = dowTotals.map((total, i) => (dowCounts[i] > 0 ? total / dowCounts[i] : 0));
+  return {
+    rates,
+    overallAvg: rates.reduce((sum, r) => sum + r, 0) / 7,
+  };
 }
 
 /**
- * Calculate average daily depletion over the past N days.
+ * Day-of-week depletion rates for every item at a location, in one query.
+ *
+ * The per-item version below runs a query each time it is called; computing a
+ * whole location item-by-item meant one round trip per item on every request.
  */
-export async function calculateMovingAverage(
-  itemId: string,
-  windowDays = 14
-): Promise<number> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+export async function calculateDayOfWeekRatesForLocation(
+  locationId: string,
+  windowWeeks = DEFAULT_WINDOW_WEEKS
+): Promise<Map<string, DayOfWeekRates>> {
+  const since = new Date(Date.now() - windowWeeks * 7 * 24 * 60 * 60 * 1000);
 
   const recipes = await prisma.recipe.findMany({
-    where: { inventoryItemId: itemId },
+    where:  { inventoryItem: { locationId } },
     select: {
-      quantityUsed: true,
+      inventoryItemId: true,
+      quantityUsed:    true,
       menuItem: {
         select: {
           saleEvents: {
@@ -43,35 +68,39 @@ export async function calculateMovingAverage(
     },
   });
 
-  // Group total depletion by calendar day
-  const dailyTotals = new Map<string, number>();
+  const totalsByItem = new Map<string, number[]>();
 
   for (const recipe of recipes) {
+    let totals = totalsByItem.get(recipe.inventoryItemId);
+    if (!totals) {
+      totals = [0, 0, 0, 0, 0, 0, 0];
+      totalsByItem.set(recipe.inventoryItemId, totals);
+    }
     for (const sale of recipe.menuItem.saleEvents) {
-      const day = sale.createdAt.toISOString().slice(0, 10);
-      const depletion = sale.quantity * recipe.quantityUsed;
-      dailyTotals.set(day, (dailyTotals.get(day) ?? 0) + depletion);
+      totals[sale.createdAt.getDay()] += sale.quantity * recipe.quantityUsed;
     }
   }
 
-  if (dailyTotals.size === 0) return 0;
+  const counts = weekdayCounts(since, windowWeeks);
+  const result = new Map<string, DayOfWeekRates>();
 
-  const total = [...dailyTotals.values()].reduce((sum, v) => sum + v, 0);
-  return total / windowDays; // avg per day over the full window (not just active days)
+  for (const [itemId, totals] of totalsByItem) {
+    result.set(itemId, ratesFromTotals(totals, counts));
+  }
+  return result;
 }
 
 /**
- * Calculate average depletion rate per day-of-week over the past N weeks.
- * Returns an array of 7 values [Sun, Mon, Tue, Wed, Thu, Fri, Sat].
+ * Day-of-week depletion rates for a single item.
  */
 export async function calculateDayOfWeekRates(
   itemId: string,
-  windowWeeks = 4
+  windowWeeks = DEFAULT_WINDOW_WEEKS
 ): Promise<DayOfWeekRates> {
   const since = new Date(Date.now() - windowWeeks * 7 * 24 * 60 * 60 * 1000);
 
   const recipes = await prisma.recipe.findMany({
-    where: { inventoryItemId: itemId },
+    where:  { inventoryItemId: itemId },
     select: {
       quantityUsed: true,
       menuItem: {
@@ -85,140 +114,148 @@ export async function calculateDayOfWeekRates(
     },
   });
 
-  // Accumulate depletion by day-of-week
   const dowTotals = [0, 0, 0, 0, 0, 0, 0];
-  const dowCounts = [0, 0, 0, 0, 0, 0, 0];
-
   for (const recipe of recipes) {
     for (const sale of recipe.menuItem.saleEvents) {
-      const dow = sale.createdAt.getDay();
-      dowTotals[dow] += sale.quantity * recipe.quantityUsed;
+      dowTotals[sale.createdAt.getDay()] += sale.quantity * recipe.quantityUsed;
     }
   }
 
-  // Count how many of each day-of-week fall in the window
-  const msPerDay = 24 * 60 * 60 * 1000;
-  for (let i = 0; i < windowWeeks * 7; i++) {
-    const d = new Date(since.getTime() + i * msPerDay);
-    dowCounts[d.getDay()]++;
-  }
-
-  const rates = dowTotals.map((total, i) =>
-    dowCounts[i] > 0 ? total / dowCounts[i] : 0
-  );
-
-  const overallAvg = rates.reduce((sum, r) => sum + r, 0) / 7;
-
-  return { rates, overallAvg };
+  return ratesFromTotals(dowTotals, weekdayCounts(since, windowWeeks));
 }
 
 /**
- * Calculate seasonality multipliers from day-of-week rates.
- * seasonality[i] = rates[i] / overallAvg (>1 = busier than average).
+ * Seasonality multipliers from day-of-week rates (>1 = busier than average).
  */
-export function calculateSeasonality(
-  rates: number[],
-  overallAvg: number
-): number[] {
-  if (overallAvg <= 0) return [1, 1, 1, 1, 1, 1, 1];
+export function calculateSeasonality(rates: number[], overallAvg: number): number[] {
+  if (overallAvg <= 0) return [...FLAT_SEASONALITY];
   return rates.map((r) => r / overallAvg);
 }
 
 /**
- * Predict when stock will hit zero given current stock and forecast data.
- * Returns null if no sales history.
+ * Predict when stock hits zero, given already-computed rates.
+ *
+ * Walks forward a day at a time and interpolates within the day it runs out,
+ * rather than stepping hour by hour for 720 iterations.
+ */
+export function predictDepletionFromRates(
+  currentStock: number,
+  { rates, overallAvg }: DayOfWeekRates,
+  now: Date = new Date()
+): Date | null {
+  if (currentStock <= 0) return now;
+  if (overallAvg <= 0) return null;
+
+  const seasonality = calculateSeasonality(rates, overallAvg);
+
+  let remaining = currentStock;
+  let cursor = now;
+
+  for (let day = 0; day < MAX_FORECAST_DAYS; day++) {
+    const hourlyRate = (overallAvg * seasonality[cursor.getDay()]) / 24;
+
+    const endOfDay = new Date(cursor);
+    endOfDay.setHours(24, 0, 0, 0);
+
+    const hoursLeft = (endOfDay.getTime() - cursor.getTime()) / 3_600_000;
+    const consumable = hourlyRate * hoursLeft;
+
+    if (hourlyRate > 0 && remaining <= consumable) {
+      return new Date(cursor.getTime() + (remaining / hourlyRate) * 3_600_000);
+    }
+
+    remaining -= consumable;
+    cursor = endOfDay;
+  }
+
+  return null; // will not deplete inside the forecast horizon
+}
+
+/**
+ * Predict depletion for one item, fetching its rates.
  */
 export async function predictDepletion(
   itemId: string,
   currentStock: number
 ): Promise<Date | null> {
   if (currentStock <= 0) return new Date();
-
-  const { rates, overallAvg } = await calculateDayOfWeekRates(itemId);
-  const seasonality = calculateSeasonality(rates, overallAvg);
-
-  if (overallAvg <= 0) return null;
-
-  // Walk forward hour by hour, depleting stock using today's hourly rate
-  const hourlyOverallRate = overallAvg / 24;
-  if (hourlyOverallRate <= 0) return null;
-
-  let remaining = currentStock;
-  let now = new Date();
-
-  // Simulate up to 30 days ahead
-  for (let h = 0; h < 30 * 24; h++) {
-    const dow = now.getDay();
-    const hourlyRate = hourlyOverallRate * seasonality[dow];
-    remaining -= hourlyRate;
-    now = new Date(now.getTime() + 60 * 60 * 1000);
-    if (remaining <= 0) return now;
-  }
-
-  return null; // won't deplete in 30 days
+  return predictDepletionFromRates(currentStock, await calculateDayOfWeekRates(itemId));
 }
 
 /**
- * Recalculate ForecastSnapshot records for all active items in a location.
+ * Recalculate ForecastSnapshot rows for every active item in a location.
  */
 export async function updateForecastSnapshots(locationId: string): Promise<void> {
-  const items = await prisma.inventoryItem.findMany({
-    where:  { locationId, isActive: true },
-    select: { id: true },
-  });
+  const [items, ratesByItem] = await Promise.all([
+    prisma.inventoryItem.findMany({
+      where:  { locationId, isActive: true },
+      select: { id: true },
+    }),
+    calculateDayOfWeekRatesForLocation(locationId),
+  ]);
 
-  for (const item of items) {
-    const { rates, overallAvg } = await calculateDayOfWeekRates(item.id);
+  // One transaction of upserts rather than items x 7 sequential round trips.
+  const writes = items.flatMap((item) => {
+    const { rates, overallAvg } = ratesByItem.get(item.id) ?? emptyRates();
     const seasonality = calculateSeasonality(rates, overallAvg);
 
-    for (let dow = 0; dow < 7; dow++) {
-      await prisma.forecastSnapshot.upsert({
+    return Array.from({ length: 7 }, (_, dow) => {
+      const avgSalesRate = rates[dow] / 24; // daily -> hourly
+      return prisma.forecastSnapshot.upsert({
         where: {
-          inventoryItemId_dayOfWeek: {
-            inventoryItemId: item.id,
-            dayOfWeek:       dow,
-          },
+          inventoryItemId_dayOfWeek: { inventoryItemId: item.id, dayOfWeek: dow },
         },
-        update: {
-          avgSalesRate: rates[dow] / 24, // convert daily → hourly
-          seasonality:  seasonality[dow],
-        },
+        update: { avgSalesRate, seasonality: seasonality[dow] },
         create: {
           inventoryItemId: item.id,
           dayOfWeek:       dow,
-          avgSalesRate:    rates[dow] / 24,
+          avgSalesRate,
           seasonality:     seasonality[dow],
         },
       });
-    }
-  }
+    });
+  });
+
+  await prisma.$transaction(writes);
 }
 
 /**
- * Create an alert for an item if warranted, using forecast-based depletion time.
- * Skips if an ACTIVE alert already exists.
+ * Create an alert for an item if warranted. Skips if one is already ACTIVE.
+ *
+ * Fires either when stock is at or below safety, or when it is forecast to run
+ * out inside the location's alert window - the window is configurable in
+ * settings and was previously never read.
  */
 export async function createAlertIfNeeded(
   itemId: string,
   currentStock: number,
   safetyStock: number
 ): Promise<void> {
-  if (currentStock > safetyStock) return;
+  const item = await prisma.inventoryItem.findUnique({
+    where:  { id: itemId },
+    select: { location: { select: { alertWindowMinutes: true } } },
+  });
+
+  const alertWindowMinutes = item?.location.alertWindowMinutes ?? 60;
+  const depletionAt = await predictDepletion(itemId, currentStock);
+
+  const windowEnd = new Date(Date.now() + alertWindowMinutes * 60 * 1000);
+  const belowSafety = currentStock <= safetyStock;
+  const depletingSoon = depletionAt !== null && depletionAt <= windowEnd;
+
+  if (!belowSafety && !depletingSoon) return;
 
   const existing = await prisma.alert.findFirst({
-    where: { inventoryItemId: itemId, status: "ACTIVE" },
+    where:  { inventoryItemId: itemId, status: "ACTIVE" },
+    select: { id: true },
   });
   if (existing) return;
 
-  const depletionAt = await predictDepletion(itemId, currentStock);
-  // Fall back to 1 hour if no forecast data
-  const predictedDepletionAt = depletionAt ?? new Date(Date.now() + 60 * 60 * 1000);
-
   await prisma.alert.create({
     data: {
-      inventoryItemId:     itemId,
-      status:              "ACTIVE",
-      predictedDepletionAt,
+      inventoryItemId:      itemId,
+      status:               "ACTIVE",
+      predictedDepletionAt: depletionAt ?? windowEnd,
     },
   });
 }

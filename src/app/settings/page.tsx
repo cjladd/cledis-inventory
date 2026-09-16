@@ -89,7 +89,7 @@ export default function SettingsPage() {
         <section className="mb-6 p-4 bg-gray-50 rounded-xl flex items-center justify-between">
           <div>
             <p className="font-semibold text-gray-900">{session.user.name}</p>
-            <p className="text-sm text-gray-500">{session.user.email} · {(session.user as { role?: string }).role}</p>
+            <p className="text-sm text-gray-500">{session.user.email} · {session.user.role}</p>
           </div>
           <button
             onClick={handleLogout}

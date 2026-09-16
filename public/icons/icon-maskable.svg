@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Kitchen-Up Inventory">
+  <rect width="512" height="512" fill="#10b981"/>
+  <g fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" transform="translate(51.2 51.2) scale(0.8)">
+    <path d="M192 128h-40a40 40 0 0 0-40 40v208a40 40 0 0 0 40 40h208a40 40 0 0 0 40-40V168a40 40 0 0 0-40-40h-40"/>
+    <path d="M192 128a40 40 0 0 0 40 40h48a40 40 0 0 0 40-40 40 40 0 0 0-40-40h-48a40 40 0 0 0-40 40z"/>
+    <path d="M176 264l56 56 104-112"/>
+  </g>
+</svg>
