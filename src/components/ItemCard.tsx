@@ -8,34 +8,27 @@ export interface ItemCardProps {
   unit: string;
   status: StockStatus;
   category?: string;
+  parLevel?: number;
   onClick?: () => void;
 }
 
-const statusConfig: Record<StockStatus, { bg: string; text: string; dot: string; label: string }> = {
-  ok: {
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    dot: 'bg-emerald-500',
-    label: 'In Stock',
-  },
-  low: {
-    bg: 'bg-amber-50',
-    text: 'text-amber-700',
-    dot: 'bg-amber-500',
-    label: 'Low Stock',
-  },
-  critical: {
-    bg: 'bg-orange-50',
-    text: 'text-orange-700',
-    dot: 'bg-orange-500',
-    label: 'Critical',
-  },
-  out: {
-    bg: 'bg-red-50',
-    text: 'text-red-700',
-    dot: 'bg-red-500',
-    label: 'Out of Stock',
-  },
+/**
+ * Status is carried by the left spine rather than a badge on every row.
+ * An item that is fine gets no colour at all - scanning a list of sixty, the
+ * eye should catch only the rows that need something doing.
+ */
+const spineFor: Record<StockStatus, string> = {
+  ok:       'text-transparent',
+  low:      'text-amber',
+  critical: 'text-flame',
+  out:      'text-flame',
+};
+
+const quantityFor: Record<StockStatus, string> = {
+  ok:       'text-ink',
+  low:      'text-ink',
+  critical: 'text-flame',
+  out:      'text-flame',
 };
 
 export default function ItemCard({
@@ -44,64 +37,37 @@ export default function ItemCard({
   unit,
   status,
   category,
+  parLevel,
   onClick,
 }: ItemCardProps) {
-  const config = statusConfig[status];
-
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 
-                 active:scale-[0.98] active:bg-gray-50 transition-all duration-150
-                 touch-manipulation text-left"
+      className={`spine ${spineFor[status]} w-full bg-surface text-left
+                  px-4 py-3.5 min-h-[72px]
+                  flex items-center gap-4
+                  active:bg-surface-sunk transition-colors duration-100`}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* Item Info */}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-base font-semibold text-gray-900 truncate">
-            {name}
-          </h3>
-          {category && (
-            <p className="text-sm text-gray-500 mt-0.5">{category}</p>
-          )}
-        </div>
-
-        {/* Status Badge */}
-        <div
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${config.bg}`}
-        >
-          <span className={`w-2 h-2 rounded-full ${config.dot}`} />
-          <span className={`text-xs font-medium ${config.text}`}>
-            {config.label}
-          </span>
-        </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[15px] leading-tight text-ink truncate">
+          {name}
+        </p>
+        <p className="mt-1 text-[13px] text-ink-3 truncate">
+          {status === 'out' ? 'Out of stock' : category}
+        </p>
       </div>
 
-      {/* Stock Display */}
-      <div className="mt-3 flex items-baseline gap-1">
-        <span className="text-2xl font-bold text-gray-900">
+      <div className="text-right flex-shrink-0">
+        <p className={`tnum text-quantity ${quantityFor[status]}`}>
           {currentStock.toLocaleString()}
-        </span>
-        <span className="text-sm text-gray-500">{unit}</span>
-      </div>
-
-      {/* Touch indicator */}
-      <div className="mt-3 flex items-center text-gray-400">
-        <span className="text-xs">Tap to update</span>
-        <svg
-          className="w-4 h-4 ml-1"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+          <span className="ml-1 text-[13px] font-medium text-ink-3 tracking-normal">
+            {unit}
+          </span>
+        </p>
+        {parLevel !== undefined && (
+          <p className="tnum mt-1 text-[13px] text-ink-3">par {parLevel}</p>
+        )}
       </div>
     </button>
   );

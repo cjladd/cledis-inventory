@@ -17,6 +17,8 @@ const ACCOUNTS = [
   { label: "Line Cook", email: "staff.elmhill@cledis.com",   hint: "PIN: 0000" },
 ];
 
+const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
+
 export default function LoginPage() {
   const router = useRouter();
   const [email,   setEmail]   = useState(SHOW_DEMO_ACCOUNTS ? ACCOUNTS[0].email : "");
@@ -52,13 +54,13 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        triggerError("Invalid email or PIN");
+        triggerError("That email and PIN do not match");
         return;
       }
 
       router.replace("/");
     } catch {
-      triggerError("Connection error. Please try again.");
+      triggerError("No connection. Try again.");
     } finally {
       setLoading(false);
     }
@@ -79,27 +81,24 @@ export default function LoginPage() {
   const handlePinDelete = () => setPin((p) => p.slice(0, -1));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-emerald-100 flex flex-col items-center justify-center px-4">
-      {/* Branding */}
-      <div className="mb-8 text-center">
-        <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
+    <div className="min-h-screen bg-ground flex flex-col justify-center px-6 py-10">
+      <div className="w-full max-w-sm mx-auto">
+        <div className="mb-8">
+          <h1 className="text-[34px] font-extrabold leading-none tracking-tight text-ink">
+            Kitchen-Up
+          </h1>
+          <p className="mt-2 text-[15px] text-ink-2">Prep, waste and stock for Cledis</p>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900">Kitchen-Up</h1>
-        <p className="text-gray-500 mt-1">Inventory Management</p>
-      </div>
 
-      {/* Card */}
-      <div className={`w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 ${shake ? "animate-shake" : ""}`}>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Account selector — demo shortcut, or a plain email field */}
-          <div>
-            <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-2">
+        <form onSubmit={handleSubmit} className={shake ? "animate-shake" : ""}>
+          <div className="mb-5">
+            <label
+              htmlFor="login-email"
+              className="block mb-2 text-[13px] font-semibold text-ink-2"
+            >
               Who are you?
             </label>
+
             {!SHOW_DEMO_ACCOUNTS ? (
               <input
                 id="login-email"
@@ -108,51 +107,51 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@cledis.com"
                 autoComplete="username"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-3.5 rounded-control bg-surface border border-rule
+                           text-[15px] text-ink placeholder:text-ink-3
+                           focus:outline-none focus:border-ink transition-colors"
               />
             ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  onClick={() => { setEmail(acc.email); setPin(""); setError(""); }}
-                  className={`p-3 rounded-xl border-2 text-left transition-all ${
-                    email === acc.email
-                      ? "border-emerald-500 bg-emerald-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <p className={`font-medium text-sm ${email === acc.email ? "text-emerald-700" : "text-gray-800"}`}>
-                    {acc.label}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">{acc.hint}</p>
-                </button>
-              ))}
-            </div>
+              <div className="grid grid-cols-2 gap-2">
+                {ACCOUNTS.map((acc) => (
+                  <button
+                    key={acc.email}
+                    type="button"
+                    onClick={() => { setEmail(acc.email); setPin(""); setError(""); }}
+                    className={`p-3 rounded-control text-left transition-colors
+                                ${
+                                  email === acc.email
+                                    ? "bg-ink text-white"
+                                    : "bg-surface border border-rule text-ink active:bg-surface-sunk"
+                                }`}
+                  >
+                    <p className="font-bold text-[15px] leading-tight">{acc.label}</p>
+                    <p
+                      className={`tnum mt-0.5 text-[12px] ${
+                        email === acc.email ? "text-white/60" : "text-ink-3"
+                      }`}
+                    >
+                      {acc.hint}
+                    </p>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* PIN display */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Enter PIN
-            </label>
-            <div className="flex justify-center gap-3 mb-3">
-              {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => (
+          {/* Filled bars rather than dots: easier to count at a glance. */}
+          <div className="mb-5">
+            <div className="flex gap-2" aria-hidden="true">
+              {Array.from({ length: Math.max(PIN_MIN_LENGTH, pin.length) }).map((_, i) => (
                 <div
                   key={i}
-                  className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-bold transition-all ${
-                    i < pin.length
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                      : "border-gray-200 bg-gray-50"
-                  }`}
-                >
-                  {i < pin.length ? "●" : ""}
-                </div>
+                  className={`h-12 flex-1 rounded-control transition-colors
+                              ${i < pin.length ? "bg-ink" : "bg-surface border border-rule"}`}
+                />
               ))}
             </div>
-            {/* Hidden input for accessibility / keyboard users */}
+
+            {/* Real input, kept offscreen so hardware keyboards still work. */}
             <input
               ref={pinRef}
               type="password"
@@ -166,49 +165,55 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* Numpad */}
+          {/* The keypad is the interface here, so it gets the room. */}
           <div className="grid grid-cols-3 gap-2">
-            {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((key) => (
-              <button
-                key={key || "empty"}
-                type="button"
-                onClick={() => {
-                  if (key === "⌫") handlePinDelete();
-                  else if (key) handlePinKey(key);
-                }}
-                disabled={!key}
-                className={`h-14 rounded-xl text-xl font-semibold transition-all active:scale-95 ${
-                  key === "⌫"
-                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    : key
-                    ? "bg-gray-100 text-gray-900 hover:bg-emerald-50 hover:text-emerald-700"
-                    : "invisible"
-                }`}
-              >
-                {key}
-              </button>
-            ))}
+            {KEYS.map((key, i) => {
+              if (!key) return <div key={`gap-${i}`} />;
+
+              const isDelete = key === "del";
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => (isDelete ? handlePinDelete() : handlePinKey(key))}
+                  aria-label={isDelete ? "Delete" : key}
+                  className={`tnum h-16 rounded-control text-2xl font-bold
+                              transition-colors touch-manipulation
+                              ${
+                                isDelete
+                                  ? "bg-transparent text-ink-2 active:bg-surface-sunk"
+                                  : "bg-surface border border-rule text-ink active:bg-surface-sunk"
+                              }`}
+                >
+                  {isDelete ? (
+                    <svg className="w-6 h-6 mx-auto" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
+                    </svg>
+                  ) : (
+                    key
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Error */}
           {error && (
-            <p className="text-center text-sm text-red-600 font-medium">{error}</p>
+            <p role="alert" className="mt-4 text-[15px] font-semibold text-flame">
+              {error}
+            </p>
           )}
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading || pin.length < PIN_MIN_LENGTH}
-            className="w-full py-4 bg-emerald-500 text-white font-semibold rounded-xl
-                       hover:bg-emerald-600 active:scale-95 transition-all
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-5 py-4 rounded-control bg-amber text-white font-bold text-[17px]
+                       disabled:opacity-40 disabled:cursor-not-allowed
+                       active:bg-amber/90 transition-colors"
           >
-            {loading ? "Signing in…" : "Sign In"}
+            {loading ? "Signing in" : "Sign in"}
           </button>
         </form>
       </div>
-
-      <p className="mt-6 text-xs text-gray-400">Kitchen-Up Inventory v0.1</p>
     </div>
   );
 }

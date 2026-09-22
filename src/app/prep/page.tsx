@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import ItemCard from "@/components/ItemCard";
 import QuantityModal from "@/components/QuantityModal";
+import PageHeader from "@/components/PageHeader";
+import ListState from "@/components/ListState";
 
 type InventoryItem = {
   id:           string;
@@ -63,6 +65,11 @@ export default function PrepPage() {
     );
   }, [items, search]);
 
+  const needsAttention = useMemo(
+    () => items.filter((i) => i.status !== "ok").length,
+    [items]
+  );
+
   const handleSubmitPrep = async (quantity: number) => {
     if (!selectedItem) return;
     setSubmitting(true);
@@ -78,17 +85,17 @@ export default function PrepPage() {
       });
 
       if (res.ok) {
-        toast.success(`Added ${quantity} ${selectedItem.unit} of ${selectedItem.name}`);
+        toast.success(`Logged ${quantity} ${selectedItem.unit} of ${selectedItem.name}`);
         // Refetch rather than patching currentStock locally: the old optimistic
         // update left `status` stale, so an item could still read "Critical"
         // right after being topped up.
         refresh();
       } else {
         const err = await res.json();
-        toast.error(err.error ?? "Failed to log prep");
+        toast.error(err.error ?? "Could not log prep");
       }
     } catch {
-      toast.error("Network error. Please try again.");
+      toast.error("No connection. Try again.");
     } finally {
       setSubmitting(false);
       setSelectedItem(null);
@@ -96,40 +103,31 @@ export default function PrepPage() {
   };
 
   return (
-    <div className="px-4 pt-6 pb-4">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Log Prep</h1>
-        <p className="text-sm text-gray-500">Tap an item to add prepared quantity</p>
-      </header>
+    <div>
+      <PageHeader
+        title="Prep"
+        detail={
+          loading
+            ? undefined
+            : needsAttention > 0
+            ? `${needsAttention} of ${items.length} items need topping up`
+            : `${items.length} items, all at level`
+        }
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Find an item"
+      />
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search items…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-        />
-      </div>
-
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : error ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">Failed to load inventory</p>
-          <button
-            onClick={refresh}
-            className="px-6 py-2 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600"
-          >
-            Retry
-          </button>
-        </div>
-      ) : filteredItems.length > 0 ? (
-        <div className="space-y-3">
+      <ListState
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        isEmpty={filteredItems.length === 0}
+        emptyMessage={
+          search ? `Nothing matches "${search}"` : "No items set up yet"
+        }
+      >
+        <div className="rule-list border-y border-rule">
           {filteredItems.map((item) => (
             <ItemCard
               key={item.id}
@@ -138,15 +136,12 @@ export default function PrepPage() {
               unit={item.unit}
               status={item.status}
               category={item.category ?? undefined}
+              parLevel={item.parLevel}
               onClick={() => setSelectedItem(item)}
             />
           ))}
         </div>
-      ) : (
-        <p className="text-center text-gray-500 py-8">
-          {search ? "No items match your search" : "No inventory items yet"}
-        </p>
-      )}
+      </ListState>
 
       {selectedItem && (
         <QuantityModal

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import { formatRelativeTime, formatTimeUntil } from "@/lib/utils";
+import PageHeader from "@/components/PageHeader";
+import ListState from "@/components/ListState";
 
 type Alert = {
   id: string;
@@ -19,14 +21,20 @@ type Alert = {
   };
 };
 
+const FILTERS = [
+  { value: "ACTIVE",   label: "Open" },
+  { value: "RESOLVED", label: "Handled" },
+  { value: "all",      label: "Everything" },
+] as const;
+
 export default function AlertsPage() {
   const { data: session } = useSession();
   const canRecalculate =
     session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
 
-  const [alerts,       setAlerts]       = useState<Alert[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [filter,       setFilter]       = useState<"ACTIVE" | "RESOLVED" | "all">("ACTIVE");
+  const [alerts,        setAlerts]        = useState<Alert[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [filter,        setFilter]        = useState<"ACTIVE" | "RESOLVED" | "all">("ACTIVE");
   const [recalculating, setRecalculating] = useState(false);
 
   // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
@@ -99,137 +107,134 @@ export default function AlertsPage() {
         // Predicted depletion times just changed, so pull the list again.
         refresh();
       } else {
-        toast.error("Failed to update forecasts");
+        toast.error("Could not update forecasts");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("No connection. Try again.");
     } finally {
       setRecalculating(false);
     }
   }
 
+  const openCount = alerts.filter((a) => a.status === "ACTIVE").length;
+
   return (
-    <div className="px-4 pt-6 pb-4">
-      {/* Header */}
-      <header className="mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Alerts</h1>
-            <p className="text-sm text-gray-500">Items needing attention</p>
-          </div>
-          {canRecalculate && (
+    <div>
+      <PageHeader
+        title="Alerts"
+        detail={
+          loading
+            ? undefined
+            : openCount > 0
+            ? `${openCount} still open`
+            : "Nothing open"
+        }
+        action={
+          canRecalculate && (
             <button
               onClick={recalculateForecasts}
               disabled={recalculating}
-              className="px-3 py-2 text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl
-                         hover:bg-emerald-100 transition-colors disabled:opacity-50"
+              className="px-3.5 py-2.5 rounded-control bg-surface border border-rule
+                         text-[13px] font-semibold text-ink
+                         active:bg-surface-sunk disabled:opacity-50 transition-colors"
             >
-              {recalculating ? "Updating…" : "Recalculate"}
+              {recalculating ? "Updating" : "Recalculate"}
             </button>
-          )}
-        </div>
-      </header>
+          )
+        }
+      />
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2 mb-4">
-        {(["ACTIVE", "RESOLVED", "all"] as const).map((f) => (
+      <div className="flex gap-2 px-4 py-3">
+        {FILTERS.map((f) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              filter === f
-                ? "bg-emerald-500 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            aria-pressed={filter === f.value}
+            className={`px-3.5 py-2 rounded-control text-[13px] font-semibold
+                        transition-colors
+                        ${
+                          filter === f.value
+                            ? "bg-ink text-white"
+                            : "bg-surface border border-rule text-ink-2 active:bg-surface-sunk"
+                        }`}
           >
-            {f === "all" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+            {f.label}
           </button>
         ))}
       </div>
 
-      {/* Alerts List */}
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : alerts.length > 0 ? (
-        <div className="space-y-3">
-          {alerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={`p-4 rounded-xl border-2 ${
-                alert.status === "ACTIVE"
-                  ? "border-red-200 bg-red-50"
-                  : "border-gray-200 bg-gray-50"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">
-                    {alert.inventoryItem.name}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    Current: {alert.inventoryItem.currentStock}{" "}
-                    {alert.inventoryItem.unit}
-                  </p>
-                  <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                    <span>ETA to out: {formatTimeUntil(alert.predictedDepletionAt)}</span>
-                    <span>Created: {formatRelativeTime(alert.createdAt)}</span>
+      <ListState
+        loading={loading}
+        isEmpty={alerts.length === 0}
+        skeletonRows={3}
+        emptyMessage={
+          filter === "ACTIVE"
+            ? "Nothing needs attention right now."
+            : "No alerts to show."
+        }
+      >
+        <div className="rule-list border-y border-rule">
+          {alerts.map((alert) => {
+            const isOpen = alert.status === "ACTIVE";
+            const item = alert.inventoryItem;
+            const isCritical = item.currentStock <= item.safetyStock;
+
+            return (
+              <div
+                key={alert.id}
+                className={`spine ${
+                  isOpen ? (isCritical ? "text-flame" : "text-amber") : "text-transparent"
+                } bg-surface px-4 py-4`}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[15px] leading-tight text-ink truncate">
+                      {item.name}
+                    </p>
+                    <p className="mt-1 text-[13px] text-ink-3">
+                      Runs out in {formatTimeUntil(alert.predictedDepletionAt)}
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-ink-3">
+                      Flagged {formatRelativeTime(alert.createdAt)}
+                    </p>
+                  </div>
+
+                  <div className="text-right flex-shrink-0">
+                    <p className={`tnum text-quantity ${isOpen && isCritical ? "text-flame" : "text-ink"}`}>
+                      {item.currentStock}
+                      <span className="ml-1 text-[13px] font-medium text-ink-3 tracking-normal">
+                        {item.unit}
+                      </span>
+                    </p>
+                    {!isOpen && (
+                      <p className="mt-1 text-[13px] font-semibold text-ink-3">Handled</p>
+                    )}
                   </div>
                 </div>
-                {alert.status === "ACTIVE" && (
-                  <span className="px-2 py-1 bg-red-500 text-white text-xs font-medium rounded-full">
-                    Active
-                  </span>
-                )}
-                {alert.status === "RESOLVED" && (
-                  <span className="px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-full">
-                    Resolved
-                  </span>
+
+                {isOpen && (
+                  <div className="flex gap-2 mt-3.5">
+                    <button
+                      onClick={() => resolveAlert(alert.id)}
+                      className="flex-1 py-2.5 rounded-control bg-ink text-white
+                                 font-semibold text-[15px] touch-feedback"
+                    >
+                      Handled
+                    </button>
+                    <button
+                      onClick={() => dismissAlert(alert.id)}
+                      className="px-5 py-2.5 rounded-control bg-surface-sunk text-ink
+                                 font-semibold text-[15px] touch-feedback"
+                    >
+                      Ignore
+                    </button>
+                  </div>
                 )}
               </div>
-
-              {alert.status === "ACTIVE" && (
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => resolveAlert(alert.id)}
-                    className="flex-1 py-2 bg-emerald-500 text-white font-medium rounded-lg touch-feedback"
-                  >
-                    Mark Resolved
-                  </button>
-                  <button
-                    onClick={() => dismissAlert(alert.id)}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg touch-feedback"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
-      ) : (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 bg-emerald-100 rounded-full flex items-center justify-center">
-            <svg
-              className="w-8 h-8 text-emerald-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </div>
-          <p className="text-gray-500">No alerts at this time 🎉</p>
-        </div>
-      )}
+      </ListState>
     </div>
   );
 }

@@ -2,49 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Kitchen-Up is read on a phone, at arm's length, in a bright kitchen, often by
+ * someone with wet hands and thirty seconds. Everything below serves that:
+ * cool steel surfaces so the warm status colours carry all the urgency, heavy
+ * tabular figures because every screen is really about a quantity, and touch
+ * targets sized for a thumb rather than a cursor.
+ */
+
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 250, 250, 250;
-  --background-end-rgb: 255, 255, 255;
+  /* Surfaces - cool greys, like steel and a clean prep table */
+  --ground: #f1f3f5;
+  --surface: #ffffff;
+  --surface-sunk: #e7ebee;
+  --rule: #dce1e6;
+  --rule-strong: #c3ccd4;
+
+  /* Ink */
+  --ink: #17191c;
+  --ink-2: #5a626b;
+  --ink-3: #8b939c;
+
+  /* Status runs cold to hot, like a burner.
+     OK has no colour at all - a quiet row means nothing needs doing. */
+  --amber: #e08900;
+  --amber-soft: #fdf1dc;
+  --flame: #c3362c;
+  --flame-soft: #fbe9e7;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* The app is used under kitchen lights; keep it light but soften the glare. */
+  :root {
+    --ground: #eceff1;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: var(--ground);
+  color: var(--ink);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  font-feature-settings: "cv05" 1;
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
+/* Quantities line up down a list when they share a column width. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
-/* Hide scrollbar but allow scrolling */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+/* The left edge of a row carries its status, readable peripherally while scrolling. */
+.spine {
+  box-shadow: inset 3px 0 0 0 currentColor;
 }
 
-/* Touch feedback */
+/* Rows are separated by a rule, not by a gap and a shadow, so more fits on screen. */
+.rule-list > * + * {
+  border-top: 1px solid var(--rule);
+}
+
 .touch-feedback {
-  @apply active:scale-95 transition-transform duration-100;
+  @apply active:scale-[0.98] transition-transform duration-100;
 }
 
-/* PIN login shake animation */
+/* Wrong PIN. A physical nudge reads faster than text when you are mid-shift. */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
-  20%       { transform: translateX(-8px); }
-  40%       { transform: translateX(8px); }
-  60%       { transform: translateX(-6px); }
-  80%       { transform: translateX(6px); }
+  20%      { transform: translateX(-8px); }
+  40%      { transform: translateX(8px); }
+  60%      { transform: translateX(-6px); }
+  80%      { transform: translateX(6px); }
 }
-.animate-shake { animation: shake 0.5s ease-in-out; }
+.animate-shake { animation: shake 0.45s ease-in-out; }
+
+/* One orchestrated moment: the quantity sheet rising when you pick an item. */
+@keyframes sheet-up {
+  from { transform: translateY(6%); opacity: 0; }
+  to   { transform: translateY(0);  opacity: 1; }
+}
+.animate-sheet { animation: sheet-up 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-shake,
+  .animate-sheet {
+    animation: none;
+  }
+  .touch-feedback {
+    @apply transition-none;
+  }
+}
+
+/* Keyboard focus stays visible everywhere; the kitchen tablet has a keyboard. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}

@@ -8,21 +8,40 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: "#ecfdf5",
-          100: "#d1fae5",
-          200: "#a7f3d0",
-          300: "#6ee7b7",
-          400: "#34d399",
-          500: "#10b981",
-          600: "#059669",
-          700: "#047857",
-          800: "#065f46",
-          900: "#064e3b",
+        ground:      "var(--ground)",
+        surface:     "var(--surface)",
+        "surface-sunk": "var(--surface-sunk)",
+        rule:        "var(--rule)",
+        "rule-strong": "var(--rule-strong)",
+        ink: {
+          DEFAULT: "var(--ink)",
+          2: "var(--ink-2)",
+          3: "var(--ink-3)",
         },
+        amber: {
+          DEFAULT: "var(--amber)",
+          soft:    "var(--amber-soft)",
+        },
+        flame: {
+          DEFAULT: "var(--flame)",
+          soft:    "var(--flame-soft)",
+        },
+      },
+      fontFamily: {
+        sans: ["var(--font-archivo)", "system-ui", "sans-serif"],
+      },
+      fontSize: {
+        // A quantity is the loudest thing on any screen it appears on.
+        quantity: ["1.75rem", { lineHeight: "1", letterSpacing: "-0.03em", fontWeight: "800" }],
+        hero:     ["4.5rem", { lineHeight: "1", letterSpacing: "-0.04em", fontWeight: "800" }],
       },
       spacing: {
         safe: "env(safe-area-inset-bottom)",
+      },
+      borderRadius: {
+        // Radius marks what you can touch. Rows are square; controls are not.
+        control: "0.625rem",
+        sheet:   "1.25rem",
       },
     },
   },

@@ -19,9 +19,9 @@ export default function Error({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-      <div className="w-16 h-16 mb-5 bg-red-100 rounded-full flex items-center justify-center">
+      <div className="w-14 h-14 mb-5 bg-flame-soft rounded-full flex items-center justify-center">
         <svg
-          className="w-8 h-8 text-red-500"
+          className="w-7 h-7 text-flame"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -36,19 +36,19 @@ export default function Error({
         </svg>
       </div>
 
-      <h1 className="text-xl font-bold text-gray-900">Something went wrong</h1>
-      <p className="mt-2 text-sm text-gray-500 max-w-sm">
-        The page could not be loaded. Your logged prep and waste are safe.
+      <h1 className="text-xl font-bold text-ink">This screen did not load</h1>
+      <p className="mt-2 text-[15px] text-ink-2 max-w-xs">
+        Everything you have already logged is saved.
       </p>
 
       {error.digest && (
-        <p className="mt-2 text-xs text-gray-400">Reference: {error.digest}</p>
+        <p className="tnum mt-3 text-[13px] text-ink-3">Reference {error.digest}</p>
       )}
 
       <button
         onClick={reset}
-        className="mt-6 px-6 py-3 bg-emerald-500 text-white font-semibold rounded-xl
-                   hover:bg-emerald-600 active:scale-95 transition-all"
+        className="mt-6 px-6 py-3.5 rounded-control bg-ink text-white font-bold text-[15px]
+                   active:bg-ink/90 transition-colors"
       >
         Try again
       </button>
