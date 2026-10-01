@@ -117,6 +117,81 @@ Two things to know before wiring it up:
 
 ---
 
+## Deliveries are captured from a photo
+
+**Status:** agreed, not yet implemented.
+
+Receiving is the other moment the kitchen already does by hand: a truck arrives
+1-2 times a week and someone reconciles paper against boxes. Photographing that
+paper and letting Claude read it turns a retype into a confirm.
+
+### Two sources, not one
+
+| Source | What it is | Trust |
+|---|---|---|
+| `INVOICE` | What actually arrived | Authoritative - can anchor stock |
+| `ORDER` | What was asked for | Provisional - deliveries get shorted and substituted |
+
+Both are supported because invoices go missing, get soaked, or never make it off
+the truck. But they are **not** interchangeable, and the distinction has to
+survive into the data: an order-sourced delivery is recorded as provisional and
+shown as such, because silently treating a request as a receipt reintroduces
+exactly the drift the count-anchored model exists to remove.
+
+Two things make the fallback worth having beyond resilience:
+
+- A screenshot of the vendor's web order is clean digital text in a consistent
+  layout. It parses *more* reliably than a phone photo of crumpled thermal paper
+  under kitchen lights.
+- Order screens usually show **vendor SKU numbers**. A SKU is a stable key;
+  description text drifts between orders. SKUs captured here feed the alias
+  table below and improve invoice matching too.
+
+### The hard part is matching, not reading
+
+Claude reads an invoice well. What it cannot do unaided is know that
+`BEEF GRND BULK 80/20 FRSH 10# AVG` is this kitchen's `Ground Beef 80/20`.
+Each distributor abbreviates differently and descriptions change between orders.
+
+So the first human confirmation of a line is stored as a **vendor alias**
+(vendor + SKU or raw description -> inventory item + conversion factor). After a
+few deliveries most lines match on their own and the person is only checking
+quantities. The confirm step earns its keep by training the table.
+
+### This forces the units problem
+
+Today the catalogue is 129 items in `case`, 33 in `batch`, 26 in `lb`, plus
+`qt`, `pan`, `pack`, `container`, `cup` and `bag` - nine free-text strings with
+no conversions. An invoice reads "2 CS" of ground beef against an item tracked in
+`lb`. **Without a per-item case size, a delivery cannot become a stock number.**
+
+The units gap is listed under Deliberate non-fixes below. This feature is what
+makes it blocking rather than latent, and the ordering forecast needs it anyway.
+
+### Shape
+
+- New `AdjustmentType` value `RECEIVED` - a delivery is not prep, waste or a
+  manual correction.
+- `Delivery` (photo, vendor, source, date, status, uploaded by),
+  `DeliveryLine` (raw text, parsed quantity and unit, matched item, confirmed),
+  `VendorAlias` (vendor + key -> item + conversion).
+- Needs blob storage, which the app has none of today.
+- Extraction via Claude vision with a structured-output schema. Cost is well
+  under a cent per document, so it is not a factor.
+
+**Never auto-commit.** The flow is photo -> parsed draft -> human confirms ->
+write. A misread 12 for 2 would otherwise corrupt stock with nothing to show
+what happened.
+
+### Why it fits
+
+The count-anchored model wants events where stock is *known* rather than
+inferred, and a delivery is a documented restock with paper behind it. It also
+produces real purchase history, so the ordering forecast can reason from what
+was actually bought and when - not from sales alone.
+
+---
+
 ## Deliberate non-fixes
 
 - **Waste exceeding computed stock is allowed.** The stock figure is an estimate
