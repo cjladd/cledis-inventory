@@ -27,6 +27,21 @@ const FILTERS = [
   { value: "all",      label: "Everything" },
 ] as const;
 
+/**
+ * formatTimeUntil returns whole phrases for the edge cases ("overdue",
+ * "unknown"), so they cannot be dropped into "Runs out in ___" - that read as
+ * "Runs out in overdue".
+ */
+function runOutPhrase(predictedDepletionAt: string | null): string {
+  if (!predictedDepletionAt) return "No forecast yet";
+
+  const remaining = formatTimeUntil(predictedDepletionAt);
+  if (remaining === "overdue") return "Past its forecast run-out";
+  if (remaining === "unknown") return "No forecast yet";
+
+  return `Runs out in ${remaining}`;
+}
+
 export default function AlertsPage() {
   const { data: session } = useSession();
   const canRecalculate =
@@ -192,7 +207,7 @@ export default function AlertsPage() {
                       {item.name}
                     </p>
                     <p className="mt-1 text-[13px] text-ink-3">
-                      Runs out in {formatTimeUntil(alert.predictedDepletionAt)}
+                      {runOutPhrase(alert.predictedDepletionAt)}
                     </p>
                     <p className="mt-0.5 text-[13px] text-ink-3">
                       Flagged {formatRelativeTime(alert.createdAt)}
