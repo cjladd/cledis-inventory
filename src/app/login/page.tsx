@@ -13,8 +13,9 @@ import { PIN_MIN_LENGTH, PIN_MAX_LENGTH } from "@/lib/pin";
 const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === "true";
 
 const ACCOUNTS = [
-  { label: "Manager",   email: "manager.elmhill@cledis.com", hint: "PIN: 1234" },
-  { label: "Line Cook", email: "staff.elmhill@cledis.com",   hint: "PIN: 0000" },
+  { label: "Admin",     email: "admin.elmhill@cledis.com",   hint: "9999" },
+  { label: "Manager",   email: "manager.elmhill@cledis.com", hint: "1234" },
+  { label: "Line cook", email: "staff.elmhill@cledis.com",   hint: "0000" },
 ];
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
@@ -112,7 +113,7 @@ export default function LoginPage() {
                            focus:outline-none focus:border-ink transition-colors"
               />
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {ACCOUNTS.map((acc) => (
                   <button
                     key={acc.email}
@@ -125,13 +126,13 @@ export default function LoginPage() {
                                     : "bg-surface border border-rule text-ink active:bg-surface-sunk"
                                 }`}
                   >
-                    <p className="font-bold text-[15px] leading-tight">{acc.label}</p>
+                    <p className="font-bold text-[14px] leading-tight">{acc.label}</p>
                     <p
                       className={`tnum mt-0.5 text-[12px] ${
                         email === acc.email ? "text-white/60" : "text-ink-3"
                       }`}
                     >
-                      {acc.hint}
+                      PIN {acc.hint}
                     </p>
                   </button>
                 ))}
