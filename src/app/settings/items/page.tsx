@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
+import PageHeader from "@/components/PageHeader";
+import ListState from "@/components/ListState";
 
 type InventoryItem = {
   id:          string;
@@ -17,6 +18,12 @@ type InventoryItem = {
 const CATEGORIES = ["Protein", "Dairy", "Produce", "Bread", "Frozen", "Dry Goods", "Sauces", "Specialty"];
 
 const EMPTY_FORM = { name: "", unit: "", parLevel: 0, safetyStock: 0, category: "Protein" };
+
+const fieldClass =
+  "w-full px-4 py-3 rounded-control bg-ground border border-rule text-[15px] text-ink " +
+  "placeholder:text-ink-3 focus:outline-none focus:border-ink transition-colors";
+
+const labelClass = "block mb-1.5 text-[13px] font-semibold text-ink-2";
 
 export default function ItemsPage() {
   const [items,   setItems]   = useState<InventoryItem[]>([]);
@@ -44,7 +51,7 @@ export default function ItemsPage() {
         );
         if (res.ok && !cancelled) setItems((await res.json()).items ?? []);
       } catch {
-        if (!cancelled) toast.error("Failed to load items");
+        if (!cancelled) toast.error("Could not load items");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -77,7 +84,7 @@ export default function ItemsPage() {
       return;
     }
     if (form.parLevel <= 0 || form.safetyStock < 0) {
-      toast.error("Par level must be > 0");
+      toast.error("Par level must be more than zero");
       return;
     }
 
@@ -94,15 +101,15 @@ export default function ItemsPage() {
       });
 
       if (res.ok) {
-        toast.success(editItem ? "Item updated" : "Item created");
+        toast.success(editItem ? "Item updated" : "Item added");
         setShowModal(false);
         fetchItems();
       } else {
         const err = await res.json();
-        toast.error(err.error ?? "Save failed");
+        toast.error(err.error ?? "Could not save");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("No connection. Try again.");
     } finally {
       setSaving(false);
     }
@@ -116,10 +123,10 @@ export default function ItemsPage() {
         toast.success("Item retired");
         fetchItems();
       } else {
-        toast.error("Retire failed");
+        toast.error("Could not retire item");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("No connection. Try again.");
     }
   };
 
@@ -134,107 +141,100 @@ export default function ItemsPage() {
         toast.success("Item restored");
         fetchItems();
       } else {
-        toast.error("Restore failed");
+        toast.error("Could not restore item");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("No connection. Try again.");
     }
   };
 
-  const filtered = items.filter((i) =>
-    i.name.toLowerCase().includes(search.toLowerCase()) ||
-    i.category.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          i.name.toLowerCase().includes(search.toLowerCase()) ||
+          i.category.toLowerCase().includes(search.toLowerCase())
+      ),
+    [items, search]
   );
 
   return (
-    <div className="px-4 pt-6 pb-4">
-      {/* Header */}
-      <header className="mb-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Link href="/settings" className="text-emerald-600 hover:text-emerald-700">
-            ← Settings
-          </Link>
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900">Inventory Items</h1>
-        <p className="text-sm text-gray-500">{items.length} items total</p>
-      </header>
+    <div>
+      <PageHeader
+        title="Inventory items"
+        detail={loading ? undefined : `${items.length} items`}
+        backHref="/settings"
+        backLabel="Setup"
+        action={
+          <button
+            onClick={openAdd}
+            className="px-4 py-2.5 rounded-control bg-ink text-white
+                       font-semibold text-[13px] active:bg-ink/90 transition-colors"
+          >
+            Add item
+          </button>
+        }
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Find an item"
+      />
 
-      {/* Toolbar */}
-      <div className="flex gap-2 mb-4">
-        <input
-          type="text"
-          placeholder="Search items…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-        />
-        <button
-          onClick={openAdd}
-          className="px-4 py-2.5 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors text-sm whitespace-nowrap"
-        >
-          + Add Item
-        </button>
-      </div>
-
-      <label className="flex items-center gap-2 mb-4 text-sm text-gray-600 select-none">
+      <label className="flex items-center gap-2.5 px-4 py-3 text-[13px] text-ink-2 select-none">
         <input
           type="checkbox"
           checked={showRetired}
           onChange={(e) => setShowRetired(e.target.checked)}
-          className="w-4 h-4 rounded border-gray-300 text-emerald-500 focus:ring-emerald-500"
+          className="w-4 h-4 rounded border-rule-strong text-ink focus:ring-ink"
         />
         Show retired items
       </label>
 
-      {/* List */}
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-center text-gray-500 py-10">
-          {search ? "No items match your search" : "No items yet — click Add Item"}
-        </p>
-      ) : (
-        <div className="space-y-2">
+      <ListState
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        emptyMessage={
+          search ? `Nothing matches "${search}"` : "No items yet. Add the first one."
+        }
+      >
+        <div className="rule-list border-y border-rule">
           {filtered.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl"
-            >
+            <div key={item.id} className="flex items-center gap-3 px-4 py-3.5 bg-surface">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-medium text-gray-900 truncate">{item.name}</p>
+                  <p className="font-semibold text-[15px] text-ink truncate">{item.name}</p>
                   {!item.isActive && (
-                    <span className="px-2 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 rounded-full flex-shrink-0">
+                    <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-surface-sunk
+                                     text-[11px] font-semibold text-ink-2">
                       Retired
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">
-                  {item.category} · Par: {item.parLevel} {item.unit} · Safety: {item.safetyStock}
+                <p className="tnum mt-0.5 text-[13px] text-ink-3">
+                  {item.category} &mdash; par {item.parLevel} {item.unit}, safety {item.safetyStock}
                 </p>
               </div>
-              <div className="flex gap-2 ml-3 flex-shrink-0">
+
+              <div className="flex gap-2 flex-shrink-0">
                 <button
                   onClick={() => openEdit(item)}
-                  className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
+                  className="px-3 py-2 rounded-control bg-surface-sunk text-ink
+                             text-[13px] font-semibold active:bg-rule transition-colors"
                 >
                   Edit
                 </button>
                 {item.isActive ? (
                   <button
                     onClick={() => handleRetire(item)}
-                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                    className="px-3 py-2 rounded-control bg-flame-soft text-flame
+                               text-[13px] font-semibold active:bg-flame/20 transition-colors"
                   >
                     Retire
                   </button>
                 ) : (
                   <button
                     onClick={() => handleRestore(item)}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="px-3 py-2 rounded-control bg-surface-sunk text-ink
+                               text-[13px] font-semibold active:bg-rule transition-colors"
                   >
                     Restore
                   </button>
@@ -243,45 +243,61 @@ export default function ItemsPage() {
             </div>
           ))}
         </div>
-      )}
+      </ListState>
 
-      {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50">
-          <div className="w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              {editItem ? "Edit Item" : "New Inventory Item"}
-            </h2>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-ink/50"
+            onClick={() => setShowModal(false)}
+            aria-hidden="true"
+          />
+          <div
+            className="animate-sheet relative w-full max-w-md bg-surface
+                       rounded-t-sheet sm:rounded-sheet pb-safe shadow-2xl
+                       max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="item-form-title"
+          >
+            <div className="px-5 pt-5 pb-4 border-b border-rule">
+              <h2 id="item-form-title" className="text-lg font-bold text-ink">
+                {editItem ? "Edit item" : "New item"}
+              </h2>
+            </div>
 
-            <div className="space-y-4">
+            <div className="px-5 py-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <label htmlFor="item-name" className={labelClass}>Name</label>
                 <input
+                  id="item-name"
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Chicken (cooked)"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Chicken breast, sliced"
+                  className={fieldClass}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
+                  <label htmlFor="item-unit" className={labelClass}>Unit</label>
                   <input
+                    id="item-unit"
                     type="text"
                     value={form.unit}
                     onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    placeholder="lb, qt, bag…"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="lb, case, batch"
+                    className={fieldClass}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <label htmlFor="item-category" className={labelClass}>Category</label>
                   <select
+                    id="item-category"
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    className={fieldClass}
                   >
                     {CATEGORIES.map((c) => (
                       <option key={c} value={c}>{c}</option>
@@ -292,43 +308,50 @@ export default function ItemsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Par Level</label>
+                  <label htmlFor="item-par" className={labelClass}>Par level</label>
                   <input
+                    id="item-par"
                     type="number"
                     value={form.parLevel}
                     onChange={(e) => setForm({ ...form, parLevel: parseFloat(e.target.value) || 0 })}
                     min={0}
                     step="any"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className={`${fieldClass} tnum`}
                   />
+                  <p className="mt-1 text-[12px] text-ink-3">What the cooler holds when full</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Safety Stock</label>
+                  <label htmlFor="item-safety" className={labelClass}>Safety stock</label>
                   <input
+                    id="item-safety"
                     type="number"
                     value={form.safetyStock}
                     onChange={(e) => setForm({ ...form, safetyStock: parseFloat(e.target.value) || 0 })}
                     min={0}
                     step="any"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className={`${fieldClass} tnum`}
                   />
+                  <p className="mt-1 text-[12px] text-ink-3">Below this, it is critical</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-3 px-5 pb-5">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                className="flex-1 py-3.5 rounded-control bg-surface-sunk text-ink
+                           font-semibold text-[15px] active:bg-rule transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 py-3 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                className="flex-1 py-3.5 rounded-control bg-ink text-white
+                           font-bold text-[15px] disabled:opacity-40
+                           active:bg-ink/90 transition-colors"
               >
-                {saving ? "Saving…" : editItem ? "Save Changes" : "Create Item"}
+                {saving ? "Saving" : editItem ? "Save changes" : "Add item"}
               </button>
             </div>
           </div>

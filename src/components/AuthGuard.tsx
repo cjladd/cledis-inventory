@@ -28,8 +28,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-ground">
+        <div className="w-7 h-7 border-[3px] border-rule-strong border-t-ink rounded-full animate-spin" />
       </div>
     );
   }
@@ -39,13 +39,24 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       <Toaster
         position="top-center"
         toastOptions={{
-          duration: 3000,
-          style: { borderRadius: "12px", fontWeight: 500 },
-          success: { style: { background: "#10b981", color: "#fff" } },
-          error:   { style: { background: "#ef4444", color: "#fff" } },
+          duration: 2600,
+          style: {
+            borderRadius: "10px",
+            fontWeight: 600,
+            fontSize: "15px",
+            background: "#17191c",
+            color: "#fff",
+            padding: "12px 16px",
+          },
+          success: { iconTheme: { primary: "#e08900", secondary: "#17191c" } },
+          error:   { iconTheme: { primary: "#c3362c", secondary: "#17191c" } },
         }}
       />
-      <main className={`min-h-screen ${isAuthed && !isPublic ? "pb-20" : ""}`}>
+      <main
+        className={`min-h-screen w-full max-w-[480px] mx-auto bg-ground
+                    sm:border-x sm:border-rule
+                    ${isAuthed && !isPublic ? "pb-24" : ""}`}
+      >
         {children}
       </main>
       {isAuthed && !isPublic && <BottomNav />}

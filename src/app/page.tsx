@@ -41,9 +41,9 @@ type Stats = {
 
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return "Morning";
+  if (h < 17) return "Afternoon";
+  return "Evening";
 }
 
 function formatToday() {
@@ -100,113 +100,89 @@ export default function HomePage() {
     unit:         a.inventoryItem.unit,
   }));
 
+  const lowCount =
+    (stats?.lowStock ?? 0) + (stats?.criticalStock ?? 0) + (stats?.outOfStock ?? 0);
+
   return (
-    <div className="px-4 pt-6 pb-4">
-      {/* Header */}
-      <header className="mb-6">
-        <p className="text-sm text-emerald-600 font-medium">{formatToday()}</p>
-        <h1 className="text-2xl font-bold text-gray-900 mt-0.5">
-          {getGreeting()}, {session?.user?.name?.split(" ")[0] ?? "Chef"} 👋
+    <div>
+      <header className="px-4 pt-6 pb-5">
+        <p className="text-[13px] font-semibold text-ink-3">{formatToday()}</p>
+        <h1 className="mt-1 text-[28px] font-extrabold leading-none tracking-tight text-ink">
+          {getGreeting()}, {session?.user?.name?.split(" ")[0] ?? "chef"}
         </h1>
       </header>
 
-      {/* Alert Banner */}
+      {/* What needs doing comes before anything else on the screen. */}
       {lowStockBanner.length > 0 && (
-        <div className="mb-5">
-          <AlertBanner items={lowStockBanner} maxItems={3} />
-        </div>
+        <AlertBanner items={lowStockBanner} maxItems={3} />
       )}
 
-      {/* KPI Cards */}
-      <section className="mb-8">
-        {loading ? (
-          <div className="grid grid-cols-2 gap-3">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <KpiCard
-              label="Total Items"
-              value={stats?.totalItems ?? 0}
-              icon="📦"
-              color="bg-blue-50 border-blue-100"
-              textColor="text-blue-700"
-            />
-            <KpiCard
-              label="Low Stock"
-              value={(stats?.lowStock ?? 0) + (stats?.criticalStock ?? 0) + (stats?.outOfStock ?? 0)}
-              icon="⚠️"
-              color="bg-amber-50 border-amber-100"
-              textColor="text-amber-700"
-            />
-            <KpiCard
-              label="Active Alerts"
-              value={stats?.activeAlerts ?? 0}
-              icon="🔔"
-              color={stats?.activeAlerts ? "bg-red-50 border-red-100" : "bg-emerald-50 border-emerald-100"}
-              textColor={stats?.activeAlerts ? "text-red-700" : "text-emerald-700"}
-            />
-            <KpiCard
-              label="Today's Preps"
-              value={stats?.todayPreps ?? 0}
-              icon="✅"
-              color="bg-emerald-50 border-emerald-100"
-              textColor="text-emerald-700"
-            />
-          </div>
-        )}
-      </section>
+      {/* The two things anyone opens this app to do. */}
+      <div className="grid grid-cols-2 gap-3 px-4 py-5">
+        <Link
+          href="/prep"
+          className="flex flex-col justify-between h-28 p-4 rounded-control
+                     bg-amber text-white touch-feedback"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+          </svg>
+          <span className="text-[17px] font-bold leading-none">Log prep</span>
+        </Link>
 
-      {/* Quick Actions */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/prep"
-            className="flex flex-col items-center justify-center p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl active:scale-95 transition-transform"
+        <Link
+          href="/waste"
+          className="flex flex-col justify-between h-28 p-4 rounded-control
+                     bg-ink text-white touch-feedback"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span className="text-[17px] font-bold leading-none">Log waste</span>
+        </Link>
+      </div>
+
+      {/* A quiet read on the shift, not a grid of tiles. */}
+      <div className="flex items-stretch border-y border-rule bg-surface">
+        {[
+          { value: stats?.totalItems ?? 0, label: "items tracked" },
+          { value: lowCount,               label: "running low" },
+          { value: stats?.todayPreps ?? 0, label: "preps today" },
+        ].map((stat, i) => (
+          <div
+            key={stat.label}
+            className={`flex-1 px-4 py-4 ${i > 0 ? "border-l border-rule" : ""}`}
           >
-            <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-full mb-2">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-            </div>
-            <span className="font-medium text-emerald-700">Log Prep</span>
-          </Link>
+            <p className="tnum text-[26px] font-extrabold leading-none text-ink">
+              {loading ? "—" : stat.value}
+            </p>
+            <p className="mt-1.5 text-[12px] text-ink-3 leading-tight">{stat.label}</p>
+          </div>
+        ))}
+      </div>
 
-          <Link
-            href="/waste"
-            className="flex flex-col items-center justify-center p-4 bg-red-50 border-2 border-red-200 rounded-xl active:scale-95 transition-transform"
-          >
-            <div className="w-12 h-12 flex items-center justify-center bg-red-500 rounded-full mb-2">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </div>
-            <span className="font-medium text-red-700">Log Waste</span>
-          </Link>
-        </div>
-      </section>
-
-      {/* Attention Needed */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-800">Attention Needed</h2>
-          <Link href="/alerts" className="text-sm text-emerald-600 font-medium">
-            View All
+      <section className="pt-6">
+        <div className="flex items-baseline justify-between px-4 pb-3">
+          <h2 className="text-[15px] font-bold text-ink">Running low</h2>
+          <Link href="/alerts" className="text-[13px] font-semibold text-ink-2 hover:text-ink">
+            All alerts
           </Link>
         </div>
 
         {loading ? (
-          <div className="space-y-3">
+          <div className="rule-list border-y border-rule">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+              <div key={i} className="bg-surface px-4 py-3.5 min-h-[72px] flex items-center gap-4">
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-2/5 rounded bg-surface-sunk animate-pulse" />
+                  <div className="h-3 w-1/5 rounded bg-surface-sunk animate-pulse" />
+                </div>
+                <div className="h-6 w-14 rounded bg-surface-sunk animate-pulse" />
+              </div>
             ))}
           </div>
         ) : attentionItems.length > 0 ? (
-          <div className="space-y-3">
+          <div className="rule-list border-y border-rule">
             {attentionItems.map((item) => (
               <ItemCard
                 key={item.id}
@@ -215,41 +191,20 @@ export default function HomePage() {
                 unit={item.unit}
                 status={item.status}
                 category={item.category ?? undefined}
+                parLevel={item.parLevel}
                 onClick={() => router.push("/prep")}
               />
             ))}
           </div>
         ) : (
-          <div className="text-center py-8 bg-emerald-50 rounded-xl border border-emerald-100">
-            <p className="text-2xl mb-2">🎉</p>
-            <p className="text-emerald-700 font-medium">All items are well stocked!</p>
+          <div className="px-6 py-10 text-center border-y border-rule bg-surface">
+            <p className="text-[15px] font-semibold text-ink">Everything is at level</p>
+            <p className="mt-1 text-[13px] text-ink-2">
+              Nothing needs prepping right now.
+            </p>
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  icon,
-  color,
-  textColor,
-}: {
-  label:     string;
-  value:     number;
-  icon:      string;
-  color:     string;
-  textColor: string;
-}) {
-  return (
-    <div className={`p-4 rounded-xl border-2 ${color}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xl">{icon}</span>
-      </div>
-      <p className={`text-3xl font-bold ${textColor}`}>{value}</p>
-      <p className="text-xs text-gray-500 mt-0.5 font-medium">{label}</p>
     </div>
   );
 }

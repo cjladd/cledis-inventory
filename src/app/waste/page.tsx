@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import ItemCard from "@/components/ItemCard";
 import QuantityModal from "@/components/QuantityModal";
+import PageHeader from "@/components/PageHeader";
+import ListState from "@/components/ListState";
 
 type InventoryItem = {
   id:           string;
@@ -17,24 +19,25 @@ type InventoryItem = {
 };
 
 const WASTE_REASONS = [
-  { value: "EXPIRED",         label: "Expired"        },
-  { value: "SPOILED",         label: "Spoiled"        },
-  { value: "OVERCOOKED",      label: "Overcooked"     },
-  { value: "DROPPED",         label: "Dropped"        },
-  { value: "OVER_PREP",       label: "Over-prepped"   },
-  { value: "CUSTOMER_RETURN", label: "Customer Return"},
-  { value: "OTHER",           label: "Other"          },
+  { value: "SPOILED",         label: "Spoiled"         },
+  { value: "EXPIRED",         label: "Expired"         },
+  { value: "OVERCOOKED",      label: "Overcooked"      },
+  { value: "DROPPED",         label: "Dropped"         },
+  { value: "OVER_PREP",       label: "Over-prepped"    },
+  { value: "CUSTOMER_RETURN", label: "Sent back"       },
+  { value: "OTHER",           label: "Something else"  },
 ];
 
 export default function WastePage() {
-  const [items,          setItems]          = useState<InventoryItem[]>([]);
-  const [loading,        setLoading]        = useState(true);
-  const [error,          setError]          = useState(false);
-  const [search,         setSearch]         = useState("");
-  const [selectedItem,   setSelectedItem]   = useState<InventoryItem | null>(null);
-  const [selectedReason, setSelectedReason] = useState("SPOILED");
+  const [items,            setItems]            = useState<InventoryItem[]>([]);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState(false);
+  const [search,           setSearch]           = useState("");
+  const [selectedItem,     setSelectedItem]     = useState<InventoryItem | null>(null);
+  const [selectedReason,   setSelectedReason]   = useState("SPOILED");
   const [showReasonPicker, setShowReasonPicker] = useState(false);
-  const [submitting,     setSubmitting]     = useState(false);
+  const [submitting,       setSubmitting]       = useState(false);
+
   // Bumping refreshKey re-runs the load. Keeping the fetch inside the effect
   // (rather than calling an outer function) is what react-hooks expects, and
   // the cancelled flag stops a late response from setting state after unmount.
@@ -100,16 +103,16 @@ export default function WastePage() {
       });
 
       if (res.ok) {
-        toast.success(`Logged ${quantity} ${selectedItem.unit} waste: ${selectedItem.name}`);
+        toast.success(`Logged ${quantity} ${selectedItem.unit} wasted`);
         // Refetch so `status` reflects the new level; the old optimistic update
         // adjusted currentStock but left the status badge stale.
         refresh();
       } else {
         const err = await res.json();
-        toast.error(err.error ?? "Failed to log waste");
+        toast.error(err.error ?? "Could not log waste");
       }
     } catch {
-      toast.error("Network error. Please try again.");
+      toast.error("No connection. Try again.");
     } finally {
       setSubmitting(false);
       setSelectedItem(null);
@@ -118,40 +121,25 @@ export default function WastePage() {
   };
 
   return (
-    <div className="px-4 pt-6 pb-4">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Log Waste</h1>
-        <p className="text-sm text-gray-500">Record wasted items with reason</p>
-      </header>
+    <div>
+      <PageHeader
+        title="Waste"
+        detail="Tap an item, then say what happened"
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Find an item"
+      />
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search items…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-        />
-      </div>
-
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : error ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">Failed to load inventory</p>
-          <button
-            onClick={refresh}
-            className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600"
-          >
-            Retry
-          </button>
-        </div>
-      ) : filteredItems.length > 0 ? (
-        <div className="space-y-3">
+      <ListState
+        loading={loading}
+        error={error}
+        onRetry={refresh}
+        isEmpty={filteredItems.length === 0}
+        emptyMessage={
+          search ? `Nothing matches "${search}"` : "No items set up yet"
+        }
+      >
+        <div className="rule-list border-y border-rule">
           {filteredItems.map((item) => (
             <ItemCard
               key={item.id}
@@ -160,52 +148,67 @@ export default function WastePage() {
               unit={item.unit}
               status={item.status}
               category={item.category ?? undefined}
+              parLevel={item.parLevel}
               onClick={() => handleItemClick(item)}
             />
           ))}
         </div>
-      ) : (
-        <p className="text-center text-gray-500 py-8">
-          {search ? "No items match your search" : "No inventory items yet"}
-        </p>
-      )}
+      </ListState>
 
-      {/* Reason Picker */}
+      {/* Reason comes before quantity: it is the question the cook can answer
+          immediately, while the amount often needs a second look. */}
       {showReasonPicker && selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
-          <div className="w-full max-w-lg bg-white rounded-t-2xl p-4">
-            <div className="flex justify-center mb-3">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-ink/50"
+            onClick={() => { setShowReasonPicker(false); setSelectedItem(null); }}
+            aria-hidden="true"
+          />
+          <div
+            className="animate-sheet relative w-full max-w-md bg-surface
+                       rounded-t-sheet sm:rounded-sheet pb-safe shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reason-title"
+          >
+            <div className="px-5 pt-5 pb-4 border-b border-rule">
+              <h2 id="reason-title" className="text-lg font-bold leading-tight text-ink">
+                What happened?
+              </h2>
+              <p className="mt-0.5 text-[15px] text-ink-2 truncate">{selectedItem.name}</p>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Why is {selectedItem.name} being wasted?
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
+
+            <div className="grid grid-cols-2 gap-2 p-4">
               {WASTE_REASONS.map((reason) => (
                 <button
                   key={reason.value}
                   onClick={() => handleReasonSelect(reason.value)}
-                  className={`p-3 rounded-xl border-2 font-medium transition-colors ${
-                    selectedReason === reason.value
-                      ? "border-red-500 bg-red-50 text-red-700"
-                      : "border-gray-200 text-gray-700 hover:border-gray-300"
-                  }`}
+                  className={`py-3.5 px-3 rounded-control font-semibold text-[15px]
+                              transition-colors touch-manipulation
+                              ${
+                                selectedReason === reason.value
+                                  ? "bg-flame text-white"
+                                  : "bg-surface-sunk text-ink active:bg-rule"
+                              }`}
                 >
                   {reason.label}
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => { setShowReasonPicker(false); setSelectedItem(null); }}
-              className="w-full mt-4 py-3 text-gray-500 font-medium"
-            >
-              Cancel
-            </button>
+
+            <div className="px-4 pb-4">
+              <button
+                onClick={() => { setShowReasonPicker(false); setSelectedItem(null); }}
+                className="w-full py-3 text-[15px] font-semibold text-ink-2
+                           active:text-ink transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Quantity Modal */}
       {selectedItem && !showReasonPicker && (
         <QuantityModal
           isOpen={true}

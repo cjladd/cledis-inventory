@@ -66,7 +66,7 @@ export default function QuantityModal({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInputValue(value);
-    
+
     const parsed = parseFloat(value);
     if (!isNaN(parsed) && parsed >= 0) {
       setQuantity(parsed);
@@ -79,136 +79,113 @@ export default function QuantityModal({
     }
   };
 
-  const getModeLabel = () => {
-    switch (mode) {
-      case 'add':
-        return 'Add Stock';
-      case 'subtract':
-        return 'Remove Stock';
-      default:
-        return 'Set Quantity';
-    }
-  };
+  const isWaste = mode === 'subtract';
+  const title = mode === 'add' ? 'Log prep' : isWaste ? 'Log waste' : 'Set quantity';
 
-  const getModeColor = () => {
-    switch (mode) {
-      case 'add':
-        return 'bg-emerald-500 hover:bg-emerald-600';
-      case 'subtract':
-        return 'bg-red-500 hover:bg-red-600';
-      default:
-        return 'bg-blue-500 hover:bg-blue-600';
-    }
-  };
+  /**
+   * The cook's real question is "what will I have after this?", so the sheet
+   * answers it directly rather than making them do the arithmetic.
+   */
+  const resulting =
+    mode === 'set'
+      ? quantity
+      : isWaste
+      ? Math.max(0, currentQuantity - quantity)
+      : currentQuantity + quantity;
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 transition-opacity"
+        className="absolute inset-0 bg-ink/50"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Modal */}
       <div
-        className="relative w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl 
-                   shadow-xl transform transition-all
-                   pb-safe"
+        className="animate-sheet relative w-full max-w-md bg-surface
+                   rounded-t-sheet sm:rounded-sheet pb-safe shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
       >
-        {/* Handle bar for mobile */}
-        <div className="flex justify-center pt-3 pb-2 sm:hidden">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
-        </div>
-
         {/* Header */}
-        <div className="px-6 pt-4 pb-2">
-          <div className="flex items-center justify-between">
-            <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
-              {getModeLabel()}
+        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4 border-b border-rule">
+          <div className="min-w-0">
+            <h2 id="modal-title" className="text-lg font-bold leading-tight text-ink">
+              {title}
             </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 -mr-2 text-gray-400 hover:text-gray-600 
-                         active:bg-gray-100 rounded-full transition-colors"
-              aria-label="Close modal"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <p className="mt-0.5 text-[15px] text-ink-2 truncate">{itemName}</p>
           </div>
-          <p className="text-sm text-gray-500 mt-1">{itemName}</p>
-          {mode !== 'set' && (
-            <p className="text-xs text-gray-400 mt-1">
-              Current stock: {currentQuantity} {unit}
-            </p>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="-mr-2 -mt-1 p-2 text-ink-3 hover:text-ink rounded-control
+                       active:bg-surface-sunk transition-colors"
+            aria-label="Close"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* Quantity Controls */}
-        <div className="px-6 py-6">
-          <div className="flex items-center justify-center gap-4">
-            {/* Decrement Button */}
+        {/* The number being entered is the whole point of this screen. */}
+        <div className="px-5 pt-7 pb-5">
+          <div className="flex items-center justify-center gap-5">
             <button
               type="button"
               onClick={handleDecrement}
               disabled={quantity <= 0}
-              className="w-16 h-16 flex items-center justify-center rounded-full 
-                         bg-gray-100 text-gray-700 text-3xl font-medium
-                         active:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed
+              className="w-14 h-14 flex-shrink-0 flex items-center justify-center
+                         rounded-full bg-surface-sunk text-ink text-3xl
+                         active:bg-rule disabled:opacity-30
                          transition-colors touch-manipulation"
-              aria-label="Decrease quantity"
+              aria-label="Decrease"
             >
-              −
+              &minus;
             </button>
 
-            {/* Number Input */}
-            <div className="flex-1 max-w-[140px]">
+            <div className="min-w-0 flex-1">
               <input
                 type="number"
                 inputMode="decimal"
                 value={inputValue}
                 onChange={handleInputChange}
-                className="w-full text-center text-4xl font-bold text-gray-900 
-                           border-2 border-gray-200 rounded-xl py-3
-                           focus:border-emerald-500 focus:outline-none
-                           transition-colors"
+                aria-label={`Quantity in ${unit}`}
+                className="tnum w-full bg-transparent text-center text-hero text-ink
+                           border-0 p-0 focus:outline-none focus:ring-0
+                           [appearance:textfield]
+                           [&::-webkit-outer-spin-button]:appearance-none
+                           [&::-webkit-inner-spin-button]:appearance-none"
                 min={0}
                 step="any"
               />
-              <p className="text-center text-sm text-gray-500 mt-1">{unit}</p>
+              <p className="text-center text-[15px] font-medium text-ink-2 mt-1">{unit}</p>
             </div>
 
-            {/* Increment Button */}
             <button
               type="button"
               onClick={handleIncrement}
-              className="w-16 h-16 flex items-center justify-center rounded-full 
-                         bg-emerald-100 text-emerald-700 text-3xl font-medium
-                         active:bg-emerald-200 transition-colors touch-manipulation"
-              aria-label="Increase quantity"
+              className="w-14 h-14 flex-shrink-0 flex items-center justify-center
+                         rounded-full bg-surface-sunk text-ink text-3xl
+                         active:bg-rule transition-colors touch-manipulation"
+              aria-label="Increase"
             >
               +
             </button>
           </div>
 
-          {/* Quick Add Buttons */}
-          <div className="flex justify-center gap-2 mt-4">
+          <div className="flex justify-center gap-2 mt-6">
             {QUICK_AMOUNTS.map((amount) => (
               <button
                 key={amount}
                 type="button"
                 onClick={() => handleQuickAdd(amount)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg 
-                           font-medium text-sm active:bg-gray-200 
-                           transition-colors touch-manipulation"
+                className="tnum flex-1 py-2.5 rounded-control bg-surface-sunk
+                           font-semibold text-[15px] text-ink
+                           active:bg-rule transition-colors touch-manipulation"
               >
                 +{amount}
               </button>
@@ -216,17 +193,34 @@ export default function QuantityModal({
           </div>
         </div>
 
-        {/* Submit Button */}
-        <div className="px-6 pb-6">
+        {/* Result preview, then the action */}
+        <div className="px-5 pb-5">
+          {mode !== 'set' && (
+            <div className="flex items-baseline justify-between px-4 py-3 mb-3
+                            rounded-control bg-surface-sunk">
+              <span className="text-[15px] text-ink-2">
+                {isWaste ? 'Left after this' : 'On hand after this'}
+              </span>
+              <span className="tnum text-lg font-bold text-ink">
+                {resulting} {unit}
+              </span>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleSubmit}
             disabled={quantity <= 0 || isLoading}
-            className={`w-full py-4 text-white font-semibold rounded-xl
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors touch-manipulation ${getModeColor()}`}
+            className={`w-full py-4 rounded-control text-white font-bold text-[17px]
+                        disabled:opacity-40 disabled:cursor-not-allowed
+                        transition-colors touch-manipulation
+                        ${isWaste ? 'bg-flame active:bg-flame/90' : 'bg-amber active:bg-amber/90'}`}
           >
-            {isLoading ? 'Saving...' : `${getModeLabel()} (${quantity} ${unit})`}
+            {isLoading
+              ? 'Saving'
+              : quantity <= 0
+              ? 'Enter an amount'
+              : `Log ${quantity} ${unit}`}
           </button>
         </div>
       </div>

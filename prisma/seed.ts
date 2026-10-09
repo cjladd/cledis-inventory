@@ -367,12 +367,26 @@ async function main() {
   }
 
   // Users — 1 manager + 1 staff per location
-  const [managerPin, staffPin] = await Promise.all([
+  const [adminPin, managerPin, staffPin] = await Promise.all([
+    bcrypt.hash("9999", 10),
     bcrypt.hash("1234", 10),
     bcrypt.hash("0000", 10),
   ]);
   for (const loc of createdLocations) {
     const slug = loc.name.toLowerCase().replace(/\s+/g, "");
+    // Every location needs an admin: only an ADMIN can manage the team, so a
+    // location seeded with just a manager and a cook has no way to add people.
+    await prisma.user.upsert({
+      where: { email: `admin.${slug}@cledis.com` },
+      update: {},
+      create: {
+        email: `admin.${slug}@cledis.com`,
+        name: `${loc.name} Admin`,
+        pin: adminPin,
+        role: "ADMIN",
+        locationId: loc.id,
+      },
+    });
     await prisma.user.upsert({
       where: { email: `manager.${slug}@cledis.com` },
       update: {},
@@ -396,7 +410,7 @@ async function main() {
       },
     });
   }
-  console.log("✓ Users: 1 manager + 1 staff × 3 locations");
+  console.log("✓ Users: 1 admin + 1 manager + 1 staff × 3 locations");
 
   // Inventory items — scaled par/safety by location multiplier
   let invCount = 0;

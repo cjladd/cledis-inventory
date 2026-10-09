@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
+import PageHeader from "@/components/PageHeader";
+import ListState from "@/components/ListState";
 
 type InventoryItem = { id: string; name: string; unit: string };
 
@@ -20,6 +21,10 @@ type MenuItem = {
   recipes:         Recipe[];
 };
 
+const fieldClass =
+  "w-full px-4 py-3 rounded-control bg-surface border border-rule text-[15px] text-ink " +
+  "placeholder:text-ink-3 focus:outline-none focus:border-ink transition-colors";
+
 export default function RecipesPage() {
   const [menuItems,  setMenuItems]  = useState<MenuItem[]>([]);
   const [invItems,   setInvItems]   = useState<InventoryItem[]>([]);
@@ -28,6 +33,7 @@ export default function RecipesPage() {
   const [addingFor,  setAddingFor]  = useState<string | null>(null);
   const [form,       setForm]       = useState({ inventoryItemId: "", quantityUsed: 0, unit: "" });
   const [saving,     setSaving]     = useState(false);
+  const [search,     setSearch]     = useState("");
 
   // Bumping refreshKey re-runs the load; keeping the fetch inside the effect is
   // what react-hooks/set-state-in-effect expects, and the cancelled flag stops a
@@ -51,7 +57,7 @@ export default function RecipesPage() {
         // so retired items cannot be offered as recipe ingredients.
         if (itemsRes.ok) setInvItems((await itemsRes.json()).items ?? []);
       } catch {
-        if (!cancelled) toast.error("Failed to load data");
+        if (!cancelled) toast.error("Could not load recipes");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -62,7 +68,7 @@ export default function RecipesPage() {
 
   const handleAddIngredient = async (menuItemId: string) => {
     if (!form.inventoryItemId || form.quantityUsed <= 0) {
-      toast.error("Select an ingredient and enter a quantity");
+      toast.error("Pick an ingredient and enter how much it uses");
       return;
     }
 
@@ -84,10 +90,10 @@ export default function RecipesPage() {
         fetchData();
       } else {
         const err = await res.json();
-        toast.error(err.error ?? "Failed to add ingredient");
+        toast.error(err.error ?? "Could not add ingredient");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("No connection. Try again.");
     } finally {
       setSaving(false);
     }
@@ -100,141 +106,177 @@ export default function RecipesPage() {
         toast.success("Ingredient removed");
         fetchData();
       } else {
-        toast.error("Remove failed");
+        toast.error("Could not remove ingredient");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("No connection. Try again.");
     }
   };
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return menuItems;
+    return menuItems.filter((mi) => mi.name.toLowerCase().includes(q));
+  }, [menuItems, search]);
+
+  const unmapped = useMemo(
+    () => menuItems.filter((mi) => mi.recipes.length === 0).length,
+    [menuItems]
+  );
+
   return (
-    <div className="px-4 pt-6 pb-4">
-      <header className="mb-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Link href="/settings" className="text-emerald-600 hover:text-emerald-700">
-            ← Settings
-          </Link>
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900">Recipes</h1>
-        <p className="text-sm text-gray-500">Map menu items to inventory ingredients</p>
-      </header>
+    <div>
+      <PageHeader
+        title="Recipes"
+        detail={
+          loading
+            ? undefined
+            : unmapped > 0
+            ? `${unmapped} of ${menuItems.length} menu items have no ingredients yet`
+            : `${menuItems.length} menu items mapped`
+        }
+        backHref="/settings"
+        backLabel="Setup"
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Find a menu item"
+      />
 
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {menuItems.map((mi) => (
-            <div key={mi.id} className="border border-gray-200 rounded-xl overflow-hidden">
-              {/* Menu item header */}
-              <button
-                onClick={() => setExpanded(expanded === mi.id ? null : mi.id)}
-                className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"
-              >
-                <div className="text-left">
-                  <p className="font-semibold text-gray-900">{mi.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {mi.recipes.length} ingredient{mi.recipes.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                <svg
-                  className={`w-5 h-5 text-gray-400 transition-transform ${expanded === mi.id ? "rotate-180" : ""}`}
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      <ListState
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        emptyMessage={
+          search ? `Nothing matches "${search}"` : "No menu items yet."
+        }
+      >
+        <div className="rule-list border-y border-rule">
+          {filtered.map((mi) => {
+            const isOpen = expanded === mi.id;
+
+            return (
+              <div key={mi.id} className="bg-surface">
+                <button
+                  onClick={() => setExpanded(isOpen ? null : mi.id)}
+                  aria-expanded={isOpen}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left
+                             active:bg-surface-sunk transition-colors"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[15px] text-ink truncate">{mi.name}</p>
+                    <p className="mt-0.5 text-[13px] text-ink-3">
+                      {mi.recipes.length === 0
+                        ? "No ingredients yet"
+                        : `${mi.recipes.length} ingredient${mi.recipes.length !== 1 ? "s" : ""}`}
+                    </p>
+                  </div>
+                  <svg
+                    className={`w-5 h-5 flex-shrink-0 text-ink-3 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
 
-              {expanded === mi.id && (
-                <div className="border-t border-gray-100 bg-gray-50 p-4 space-y-2">
-                  {/* Existing ingredients */}
-                  {mi.recipes.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">No ingredients mapped yet</p>
-                  ) : (
-                    mi.recipes.map((r) => (
-                      <div key={r.id} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100">
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">{r.inventoryItem.name}</p>
-                          <p className="text-xs text-gray-500">{r.quantityUsed} {r.unit} per order</p>
-                        </div>
-                        <button
-                          onClick={() => handleRemove(r.id)}
-                          className="text-xs text-red-600 hover:text-red-700 font-medium px-2 py-1"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))
-                  )}
-
-                  {/* Add ingredient form */}
-                  {addingFor === mi.id ? (
-                    <div className="bg-white p-3 rounded-lg border-2 border-emerald-200 space-y-3">
-                      <p className="text-sm font-medium text-gray-700">Add ingredient</p>
-                      <select
-                        value={form.inventoryItemId}
-                        onChange={(e) => {
-                          const item = invItems.find((i) => i.id === e.target.value);
-                          setForm({ ...form, inventoryItemId: e.target.value, unit: item?.unit ?? "" });
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                      >
-                        <option value="">Select ingredient…</option>
-                        {invItems.map((i) => (
-                          <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
+                {isOpen && (
+                  <div className="px-4 pb-4 bg-ground border-t border-rule">
+                    {mi.recipes.length > 0 && (
+                      <ul className="rule-list mb-3">
+                        {mi.recipes.map((r) => (
+                          <li key={r.id} className="flex items-center gap-3 py-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[15px] font-medium text-ink truncate">
+                                {r.inventoryItem.name}
+                              </p>
+                              <p className="tnum mt-0.5 text-[13px] text-ink-3">
+                                {r.quantityUsed} {r.unit} per order
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleRemove(r.id)}
+                              className="px-3 py-2 rounded-control text-[13px] font-semibold
+                                         text-flame active:bg-flame-soft transition-colors"
+                            >
+                              Remove
+                            </button>
+                          </li>
                         ))}
-                      </select>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          placeholder="Qty per order"
-                          value={form.quantityUsed || ""}
-                          onChange={(e) => setForm({ ...form, quantityUsed: parseFloat(e.target.value) || 0 })}
-                          min={0}
-                          step="any"
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Unit"
-                          value={form.unit}
-                          onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                          className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => { setAddingFor(null); setForm({ inventoryItemId: "", quantityUsed: 0, unit: "" }); }}
-                          className="flex-1 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      </ul>
+                    )}
+
+                    {addingFor === mi.id ? (
+                      <div className="space-y-3 pt-3 border-t border-rule">
+                        <select
+                          value={form.inventoryItemId}
+                          onChange={(e) => {
+                            const item = invItems.find((i) => i.id === e.target.value);
+                            setForm({ ...form, inventoryItemId: e.target.value, unit: item?.unit ?? "" });
+                          }}
+                          aria-label="Ingredient"
+                          className={fieldClass}
                         >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => handleAddIngredient(mi.id)}
-                          disabled={saving}
-                          className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50"
-                        >
-                          {saving ? "Adding…" : "Add"}
-                        </button>
+                          <option value="">Pick an ingredient</option>
+                          {invItems.map((i) => (
+                            <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
+                          ))}
+                        </select>
+
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            placeholder="How much per order"
+                            aria-label="Quantity used per order"
+                            value={form.quantityUsed || ""}
+                            onChange={(e) => setForm({ ...form, quantityUsed: parseFloat(e.target.value) || 0 })}
+                            min={0}
+                            step="any"
+                            className={`${fieldClass} tnum flex-1`}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Unit"
+                            aria-label="Unit"
+                            value={form.unit}
+                            onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                            className={`${fieldClass} w-24`}
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setAddingFor(null); setForm({ inventoryItemId: "", quantityUsed: 0, unit: "" }); }}
+                            className="flex-1 py-3 rounded-control bg-surface-sunk text-ink
+                                       font-semibold text-[15px] active:bg-rule transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleAddIngredient(mi.id)}
+                            disabled={saving}
+                            className="flex-1 py-3 rounded-control bg-ink text-white
+                                       font-bold text-[15px] disabled:opacity-40
+                                       active:bg-ink/90 transition-colors"
+                          >
+                            {saving ? "Adding" : "Add"}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => { setAddingFor(mi.id); setForm({ inventoryItemId: "", quantityUsed: 0, unit: "" }); }}
-                      className="w-full py-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors font-medium"
-                    >
-                      + Add Ingredient
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                    ) : (
+                      <button
+                        onClick={() => { setAddingFor(mi.id); setForm({ inventoryItemId: "", quantityUsed: 0, unit: "" }); }}
+                        className="w-full py-3 rounded-control bg-surface border border-rule
+                                   text-ink font-semibold text-[15px]
+                                   active:bg-surface-sunk transition-colors"
+                      >
+                        Add ingredient
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
+      </ListState>
     </div>
   );
 }
