@@ -6,7 +6,7 @@ import {
   predictDepletionFromRates,
   calculateDayOfWeekRatesForLocation,
 } from "@/lib/forecast";
-import { computeStockFromData, locationStockWindowStart } from "@/lib/inventory";
+import { computeStockFromData, loadStockInputs } from "@/lib/inventory";
 
 // GET /api/inventory/forecast - return forecast data for all items
 export async function GET() {
@@ -15,10 +15,9 @@ export async function GET() {
 
   try {
     const locationId = auth.user.locationId;
-    const since = await locationStockWindowStart(locationId);
 
-    // Three queries for the whole location. This route used to run two queries
-    // per item inside a Promise.all, so a location with 44 items issued ~90.
+    // A constant number of queries for the whole location. This route used to
+    // run two queries per item inside a Promise.all, so 44 items issued ~90.
     const [items, ratesByItem] = await Promise.all([
       prisma.inventoryItem.findMany({
         where:  { locationId, isActive: true },
@@ -37,34 +36,20 @@ export async function GET() {
             },
             orderBy: { dayOfWeek: "asc" },
           },
-          liveAdjustments: {
-            where:  { createdAt: { gte: since } },
-            select: { type: true, quantity: true },
-          },
-          recipes: {
-            select: {
-              quantityUsed: true,
-              menuItem: {
-                select: {
-                  saleEvents: {
-                    where:  { createdAt: { gte: since } },
-                    select: { quantity: true },
-                  },
-                },
-              },
-            },
-          },
         },
       }),
       calculateDayOfWeekRatesForLocation(locationId),
     ]);
 
+    const { bases, adjustments, recipes } = await loadStockInputs(items, locationId);
+
     const forecasts = items.map((item) => {
-      const { currentStock } = computeStockFromData(
+      const calc = computeStockFromData(
+        bases.get(item.id)!,
         item.parLevel,
         item.safetyStock,
-        item.liveAdjustments,
-        item.recipes
+        adjustments.get(item.id) ?? [],
+        recipes.get(item.id) ?? []
       );
 
       const rates = ratesByItem.get(item.id) ?? {
@@ -76,13 +61,15 @@ export async function GET() {
         itemId:   item.id,
         itemName: item.name,
         unit:     item.unit,
-        currentStock,
-        predictedDepletionAt: predictDepletionFromRates(currentStock, rates),
+        currentStock: calc.currentStock,
+        predictedDepletionAt: predictDepletionFromRates(calc.currentStock, rates),
         snapshots: item.forecastSnapshots,
+        basis:     calc.basis,
+        countedAt: calc.countedAt,
       };
     });
 
-    return NextResponse.json({ forecasts, countedFrom: since.toISOString() });
+    return NextResponse.json({ forecasts });
   } catch (error) {
     console.error("Forecast GET error:", error);
     return NextResponse.json({ error: "Failed to fetch forecasts" }, { status: 500 });

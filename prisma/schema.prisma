@@ -37,6 +37,23 @@ enum Language {
   ES
 }
 
+/// Where a physical count was taken. Par levels key off the cooler, while an
+/// ordering walk covers dry storage and the walk-in too, so the area a count
+/// covered has to travel with the number.
+enum StorageArea {
+  COOLER
+  LINE
+  DRY
+  WALKIN
+}
+
+/// Which routine produced the count: the weekly ordering walk, or the morning
+/// cooler count that drives the prep list.
+enum CountType {
+  ORDER
+  PREP
+}
+
 // ============================================================================
 // MODELS
 // ============================================================================
@@ -62,6 +79,7 @@ model User {
   liveAdjustments LiveAdjustment[]
   resolvedAlerts  Alert[]          @relation("AlertResolvedBy")
   auditLogs       AuditLog[]
+  counts          InventoryCount[]
 
   @@index([locationId])
   @@index([email])
@@ -113,6 +131,7 @@ model InventoryItem {
   liveAdjustments   LiveAdjustment[]
   alerts            Alert[]
   forecastSnapshots ForecastSnapshot[]
+  counts            InventoryCount[]
 
   @@unique([locationId, name])
   @@unique([locationId, toastItemId])
@@ -255,4 +274,34 @@ model AuditLog {
   @@index([entityType])
   @@index([entityId])
   @@index([createdAt])
+}
+
+/// A physical count: someone looked in the cooler and wrote down what was there.
+///
+/// This is the anchor the stock figure counts forward from. Before counts
+/// existed, stock ran from par level plus every adjustment since the start of
+/// the service day, which drifted further from reality the longer it ran.
+/// A count replaces that guess with an observation, and the time it was taken
+/// is what makes the projection afterwards honest about its own age.
+model InventoryCount {
+  id              String      @id @default(cuid())
+  inventoryItemId String
+  userId          String
+  quantity        Float
+  unit            String
+  storageArea     StorageArea @default(COOLER)
+  countType       CountType
+  note            String?
+  countedAt       DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+
+  // Relations
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The hot path is "latest count for this item", so order matters here.
+  @@index([inventoryItemId, countedAt])
+  @@index([userId])
+  @@index([countedAt])
+  @@index([countType])
 }

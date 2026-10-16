@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { computeStockFromData, locationStockWindowStart } from "@/lib/inventory";
+import { computeStockFromData, loadStockInputs } from "@/lib/inventory";
 import { requireApiAuth, isSession } from "@/lib/api-auth";
 
 const QuerySchema = z.object({
@@ -31,7 +31,6 @@ export async function GET(request: Request) {
     }
 
     const { status, limit } = parsed.data;
-    const since = await locationStockWindowStart(auth.user.locationId);
 
     const where = {
       inventoryItem: { locationId: auth.user.locationId },
@@ -50,35 +49,30 @@ export async function GET(request: Request) {
             unit:        true,
             safetyStock: true,
             parLevel:    true,
-            liveAdjustments: {
-              where:  { createdAt: { gte: since } },
-              select: { type: true, quantity: true },
-            },
-            recipes: {
-              select: {
-                quantityUsed: true,
-                menuItem: {
-                  select: {
-                    saleEvents: {
-                      where:  { createdAt: { gte: since } },
-                      select: { quantity: true },
-                    },
-                  },
-                },
-              },
-            },
           },
         },
       },
     });
 
+    // One alert per item is the norm, but the list can repeat an item, so
+    // dedupe before resolving bases.
+    const alertItems = [...new Map(
+      alerts.map((a) => [a.inventoryItem.id, a.inventoryItem])
+    ).values()];
+
+    const { bases, adjustments, recipes } = await loadStockInputs(
+      alertItems,
+      auth.user.locationId
+    );
+
     const enrichedAlerts = alerts.map((alert) => {
       const item = alert.inventoryItem;
-      const { currentStock } = computeStockFromData(
+      const calc = computeStockFromData(
+        bases.get(item.id)!,
         item.parLevel,
         item.safetyStock,
-        item.liveAdjustments,
-        item.recipes
+        adjustments.get(item.id) ?? [],
+        recipes.get(item.id) ?? []
       );
       return {
         id:                  alert.id,
@@ -89,8 +83,10 @@ export async function GET(request: Request) {
           id:           item.id,
           name:         item.name,
           unit:         item.unit,
-          currentStock,
+          currentStock: calc.currentStock,
           safetyStock:  item.safetyStock,
+          basis:        calc.basis,
+          countedAt:    calc.countedAt,
         },
       };
     });

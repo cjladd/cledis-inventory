@@ -9,7 +9,7 @@ export interface QuantityModalProps {
   itemName: string;
   currentQuantity?: number;
   unit?: string;
-  mode?: 'add' | 'subtract' | 'set';
+  mode?: 'add' | 'subtract' | 'set' | 'count';
   isLoading?: boolean;
 }
 
@@ -25,6 +25,8 @@ export default function QuantityModal({
   mode = 'set',
   isLoading = false,
 }: QuantityModalProps) {
+  // 'count' deliberately starts at zero rather than the app's own estimate.
+  // Pre-filling the estimate invites confirming it instead of looking.
   const [quantity, setQuantity] = useState<number>(mode === 'set' ? currentQuantity : 0);
   const [inputValue, setInputValue] = useState<string>(String(mode === 'set' ? currentQuantity : 0));
 
@@ -80,14 +82,19 @@ export default function QuantityModal({
   };
 
   const isWaste = mode === 'subtract';
-  const title = mode === 'add' ? 'Log prep' : isWaste ? 'Log waste' : 'Set quantity';
+  const isCount = mode === 'count';
+  const title =
+    mode === 'add' ? 'Log prep'
+    : isWaste ? 'Log waste'
+    : isCount ? 'Count'
+    : 'Set quantity';
 
   /**
    * The cook's real question is "what will I have after this?", so the sheet
    * answers it directly rather than making them do the arithmetic.
    */
   const resulting =
-    mode === 'set'
+    mode === 'set' || isCount
       ? quantity
       : isWaste
       ? Math.max(0, currentQuantity - quantity)
@@ -138,6 +145,7 @@ export default function QuantityModal({
               type="button"
               onClick={handleDecrement}
               disabled={quantity <= 0}
+              data-count-mode={isCount || undefined}
               className="w-14 h-14 flex-shrink-0 flex items-center justify-center
                          rounded-full bg-surface-sunk text-ink text-3xl
                          active:bg-rule disabled:opacity-30
@@ -195,7 +203,17 @@ export default function QuantityModal({
 
         {/* Result preview, then the action */}
         <div className="px-5 pb-5">
-          {mode !== 'set' && (
+          {isCount && (
+            <div className="flex items-baseline justify-between px-4 py-3 mb-3
+                            rounded-control bg-surface-sunk">
+              <span className="text-[15px] text-ink-2">App estimate</span>
+              <span className="tnum text-lg font-bold text-ink-2">
+                {currentQuantity} {unit}
+              </span>
+            </div>
+          )}
+
+          {mode !== 'set' && !isCount && (
             <div className="flex items-baseline justify-between px-4 py-3 mb-3
                             rounded-control bg-surface-sunk">
               <span className="text-[15px] text-ink-2">
@@ -210,14 +228,20 @@ export default function QuantityModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={quantity <= 0 || isLoading}
+            disabled={(quantity <= 0 && !isCount) || isLoading}
             className={`w-full py-4 rounded-control text-white font-bold text-[17px]
                         disabled:opacity-40 disabled:cursor-not-allowed
                         transition-colors touch-manipulation
-                        ${isWaste ? 'bg-flame active:bg-flame/90' : 'bg-amber active:bg-amber/90'}`}
+                        ${
+                          isCount ? 'bg-ink active:bg-ink/90'
+                          : isWaste ? 'bg-flame active:bg-flame/90'
+                          : 'bg-amber active:bg-amber/90'
+                        }`}
           >
             {isLoading
               ? 'Saving'
+              : isCount
+              ? `Save count of ${quantity} ${unit}`
               : quantity <= 0
               ? 'Enter an amount'
               : `Log ${quantity} ${unit}`}

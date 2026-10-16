@@ -16,6 +16,8 @@ type InventoryItem = {
   safetyStock:  number;
   category:     string | null;
   status:       "ok" | "low" | "critical" | "out";
+  basis:        "count" | "par";
+  countedAt:    string | null;
 };
 
 export default function PrepPage() {
@@ -137,6 +139,7 @@ export default function PrepPage() {
               status={item.status}
               category={item.category ?? undefined}
               parLevel={item.parLevel}
+              countedAt={item.countedAt}
               onClick={() => setSelectedItem(item)}
             />
           ))}

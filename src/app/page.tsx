@@ -16,6 +16,8 @@ type InventoryItem = {
   safetyStock:  number;
   category:     string | null;
   status:       "ok" | "low" | "critical" | "out";
+  basis:        "count" | "par";
+  countedAt:    string | null;
 };
 
 type AlertItem = {
@@ -192,6 +194,7 @@ export default function HomePage() {
                 status={item.status}
                 category={item.category ?? undefined}
                 parLevel={item.parLevel}
+                countedAt={item.countedAt}
                 onClick={() => router.push("/prep")}
               />
             ))}

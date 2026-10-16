@@ -3,7 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import {
   computeStockFromData,
-  locationStockWindowStart,
+  loadStockInputs,
   type StockStatus,
 } from "@/lib/inventory";
 import { requireApiAuth, isSession } from "@/lib/api-auth";
@@ -43,12 +43,7 @@ export async function GET(request: Request) {
     }
 
     const { category, search, status, limit, offset } = parsed.data;
-    const since = await locationStockWindowStart(auth.user.locationId);
 
-    // Status is derived, not stored, so it cannot be filtered or paginated in
-    // SQL. Fetch the location's items, compute, then filter and page in memory
-    // — previously the page was taken first and the status filter applied
-    // after, so a page could come back short and `total` counted only the page.
     const items = await prisma.inventoryItem.findMany({
       where: {
         isActive:   true,
@@ -64,33 +59,27 @@ export async function GET(request: Request) {
         parLevel:    true,
         safetyStock: true,
         category:    true,
-        liveAdjustments: {
-          where:  { createdAt: { gte: since } },
-          select: { type: true, quantity: true },
-        },
-        recipes: {
-          select: {
-            quantityUsed: true,
-            menuItem: {
-              select: {
-                saleEvents: {
-                  where:  { createdAt: { gte: since } },
-                  select: { quantity: true },
-                },
-              },
-            },
-          },
-        },
       },
     });
 
+    const { bases, adjustments, recipes } = await loadStockInputs(
+      items,
+      auth.user.locationId
+    );
+
+    // Status is derived, not stored, so it cannot be filtered or paginated in
+    // SQL. Compute first, then filter and page in memory - previously the page
+    // was taken first and the status filter applied after, so a page could come
+    // back short and `total` counted only the page.
     const enriched = items.map((item) => {
-      const { currentStock, status: itemStatus } = computeStockFromData(
+      const calc = computeStockFromData(
+        bases.get(item.id)!,
         item.parLevel,
         item.safetyStock,
-        item.liveAdjustments,
-        item.recipes
+        adjustments.get(item.id) ?? [],
+        recipes.get(item.id) ?? []
       );
+
       return {
         id:          item.id,
         name:        item.name,
@@ -98,8 +87,13 @@ export async function GET(request: Request) {
         parLevel:    item.parLevel,
         safetyStock: item.safetyStock,
         category:    item.category,
-        currentStock,
-        status:      itemStatus as StockStatus,
+        currentStock: calc.currentStock,
+        status:       calc.status as StockStatus,
+        // Provenance, so the UI can say what was counted and what is projected.
+        basis:           calc.basis,
+        countedAt:       calc.countedAt,
+        countedQuantity: calc.countedQuantity,
+        storageArea:     calc.storageArea,
       };
     });
 
@@ -108,9 +102,8 @@ export async function GET(request: Request) {
       : enriched;
 
     return NextResponse.json({
-      items:      matching.slice(offset, offset + limit),
-      total:      matching.length,
-      countedFrom: since.toISOString(),
+      items: matching.slice(offset, offset + limit),
+      total: matching.length,
     });
   } catch (error) {
     console.error("Error fetching inventory:", error);

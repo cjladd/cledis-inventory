@@ -6,7 +6,7 @@ Why the system is shaped the way it is, and what is deliberately not built yet.
 
 ## The app models a workflow, not a live stock number
 
-**Status:** agreed, not yet implemented.
+**Status:** count anchoring implemented; par and cooler-vs-line still open.
 
 KUI was originally built around a continuously-accurate stock figure, decremented
 in real time by Toast sales. That does not match how Cledis actually runs:
@@ -26,37 +26,37 @@ So the value of the app is not in knowing current stock. It is in:
 2. **Flagging what to check** before the morning prep count.
 3. **Bilingual prep recipes** on a phone (see below).
 
-### What is built today, and what replaces it
+### What is built today
 
-Stock is currently `parLevel + prep − waste + manual − sales`, counted from the
-start of the current service day (`Location.timezone`, `Location.dayStartHour`,
-default 4am). Before this it was counted from the beginning of time, so the
-number drifted permanently and every request loaded the entire ledger.
+Stock anchors to the **last physical count of each item**. `InventoryCount`
+records what someone actually saw, where, and when; from that instant the figure
+counts forward through prep, waste and sales. An item nobody has counted falls
+back to par from the start of the service day, which is where everything sat
+before counts existed.
 
-The service-day boundary is **interim**. It lives behind one function,
-`stockWindowStart` in `src/lib/service-day.ts`, reached through
-`locationStockWindowStart` in `src/lib/inventory.ts`. When physical counts are
-modelled, that function returns the timestamp of the last count instead, and
-every caller keeps working unchanged.
+Each item therefore has its own cutoff, so `computeStockFromData` filters rows
+against the item's own basis rather than trusting a shared `where` clause —
+forgetting to filter would silently double-count. `loadStockInputs` fetches a
+whole page's activity in a constant number of queries using the widest anchor on
+the page.
 
-The planned model:
+Every stock figure carries its provenance (`basis: "count" | "par"`,
+`countedAt`), and the UI is expected to show it: the count screen labels each
+row *projected* or *assumed*, and item rows read "Protein, counted 2h ago". The
+app no longer presents a derived number as though someone had verified it.
 
-```
-InventoryCount {
-  inventoryItemId, quantity, storageArea (cooler | line | dry | walkin),
-  countedAt, userId, countType (order | prep)
-}
-```
+**Still open here:**
 
-Stock then reads as *"18 lb counted Tue 6:05am, ~11 lb projected now"* — the
-counted figure as fact, the projection clearly labelled an estimate.
+- **`parLevel` is a target, not a starting balance.** Prep needed should be
+  par minus what is in the cooler. The par fallback still treats it as an
+  opening balance, which is only correct for an item nobody has counted.
+- **Cooler vs line is recorded but not summed.** A count carries its
+  `storageArea`, and the UI shows which area a number came from, but stock uses
+  the latest count whatever the area. Counting the cooler and the walk-in
+  separately does not yet give a combined on-hand figure.
 
 ### Known modelling gaps this exposes
 
-- **`parLevel` is a target, not a starting balance.** In the kitchen, par is the
-  level the cooler is topped up *to*, so prep needed = par − what is in the
-  cooler. The current arithmetic treats par as an opening balance.
-- **Cooler vs line is not modelled.** Par keys off the cooler only.
 - **Prep sub-recipes are not modelled.** Logging a `batch` of Cledis sauce adds
   the batch but decrements none of the raw ingredients it consumed.
 

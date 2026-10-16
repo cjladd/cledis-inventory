@@ -16,6 +16,8 @@ type InventoryItem = {
   safetyStock:  number;
   category:     string | null;
   status:       "ok" | "low" | "critical" | "out";
+  basis:        "count" | "par";
+  countedAt:    string | null;
 };
 
 const WASTE_REASONS = [
@@ -149,6 +151,7 @@ export default function WastePage() {
               status={item.status}
               category={item.category ?? undefined}
               parLevel={item.parLevel}
+              countedAt={item.countedAt}
               onClick={() => handleItemClick(item)}
             />
           ))}

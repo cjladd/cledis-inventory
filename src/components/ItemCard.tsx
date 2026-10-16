@@ -1,5 +1,7 @@
 'use client';
 
+import { formatRelativeTime } from '@/lib/utils';
+
 export type StockStatus = 'ok' | 'low' | 'critical' | 'out';
 
 export interface ItemCardProps {
@@ -9,6 +11,8 @@ export interface ItemCardProps {
   status: StockStatus;
   category?: string;
   parLevel?: number;
+  /** ISO timestamp of the last physical count, when there is one. */
+  countedAt?: string | null;
   onClick?: () => void;
 }
 
@@ -38,8 +42,12 @@ export default function ItemCard({
   status,
   category,
   parLevel,
+  countedAt,
   onClick,
 }: ItemCardProps) {
+  // Only shown when a count exists. An uncounted item stays quiet here - the
+  // count screen is where the gaps are meant to be visible.
+  const provenance = countedAt ? `counted ${formatRelativeTime(countedAt)}` : null;
   return (
     <button
       type="button"
@@ -54,7 +62,11 @@ export default function ItemCard({
           {name}
         </p>
         <p className="mt-1 text-[13px] text-ink-3 truncate">
-          {status === 'out' ? 'Out of stock' : category}
+          {status === 'out'
+            ? 'Out of stock'
+            : provenance && category
+            ? `${category}, ${provenance}`
+            : provenance ?? category}
         </p>
       </div>
 
