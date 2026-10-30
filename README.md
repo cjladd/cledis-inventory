@@ -44,12 +44,13 @@ Open [http://localhost:3000](http://localhost:3000) on your phone or browser.
 
 Seeded per location (`elmhill`, `bellevue`, `gulch`):
 
+- **Admin**: admin.elmhill@cledis.com / PIN: 9999
 - **Manager**: manager.elmhill@cledis.com / PIN: 1234
-- **Line Cook**: staff.elmhill@cledis.com / PIN: 0000
+- **Line cook**: staff.elmhill@cledis.com / PIN: 0000
 
-These shortcuts only appear on the login screen when
-`NEXT_PUBLIC_SHOW_DEMO_LOGINS=true`. Without it the form asks for an email,
-which is what any real deployment should do.
+Which of these the login screen offers is controlled by
+`NEXT_PUBLIC_SHOW_DEMO_LOGINS` — see [Public demo links](#public-demo-links).
+Unset, the form asks for an email, which is what a real deployment should do.
 
 ## Project Structure
 
@@ -85,7 +86,7 @@ cledis-inventory/
 | `TOAST_CLIENT_SECRET` | Toast API client secret |
 | `TOAST_LOCATION_ID` | Your Toast location ID |
 | `TOAST_WEBHOOK_SECRET` | Webhook signing secret (required in production) |
-| `NEXT_PUBLIC_SHOW_DEMO_LOGINS` | Show seeded demo accounts on the login screen |
+| `NEXT_PUBLIC_SHOW_DEMO_LOGINS` | Which demo accounts the login screen offers: unset, `staff`, or `all` |
 
 ### Toast Integration
 
@@ -186,6 +187,24 @@ baseline it once with `npm run db:baseline` before running `db:deploy`.
 Do not set `NEXT_PUBLIC_SHOW_DEMO_LOGINS` in a real deployment.
 
 There is no Dockerfile in this repo yet.
+
+### Public demo links
+
+A deployment whose URL is public should run `NEXT_PUBLIC_SHOW_DEMO_LOGINS=staff`,
+which offers only the line cook account.
+
+This is safe because of where the role checks already sit, not because the demo
+hides anything. Every destructive route — items, recipes, users, settings,
+forecast recalculation — is behind `requireApiRole(["ADMIN", "MANAGER"])`. A
+visitor holding a STAFF session can log prep, waste and counts, and resolve
+alerts. They cannot retire an item, change a PIN, or read a Toast credential,
+because the server refuses regardless of what the client asks for.
+
+Use `all` only for a link you are handing to a specific person. It publishes
+the admin PIN on the login screen.
+
+Counts and adjustments from visitors will drift the numbers over time. That is
+cosmetic; reseeding resets it.
 
 ## Design decisions
 

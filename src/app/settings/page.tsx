@@ -28,6 +28,12 @@ export default function SettingsPage() {
   const router = useRouter();
   const { data: session } = useSession();
 
+  // The API already refuses these to a line cook. Hiding them keeps the screen
+  // honest about what this person can do, instead of offering doors that open
+  // onto an error.
+  const canManage =
+    session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+
   const [settings,         setSettings]         = useState<LocationSettings | null>(null);
   const [toastClientId,    setToastClientId]    = useState("");
   const [toastClientSecret, setToastClientSecret] = useState("");
@@ -113,6 +119,7 @@ export default function SettingsPage() {
       )}
 
       {/* Management */}
+      {canManage && (
       <section className="mt-6">
         <h2 className="px-4 pb-2 text-[13px] font-bold text-ink-2">Manage</h2>
         <div className="rule-list border-y border-rule">
@@ -134,8 +141,10 @@ export default function SettingsPage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Alerts */}
+      {canManage && (
       <section className="mt-6">
         <h2 className="px-4 pb-2 text-[13px] font-bold text-ink-2">Alerts</h2>
         <div className="px-4 py-4 bg-surface border-y border-rule">
@@ -157,8 +166,10 @@ export default function SettingsPage() {
           />
         </div>
       </section>
+      )}
 
       {/* Toast */}
+      {canManage && (
       <section className="mt-6">
         <h2 className="px-4 pb-2 text-[13px] font-bold text-ink-2">Toast POS</h2>
 
@@ -259,18 +270,27 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+      )}
 
-      <div className="px-4 py-6">
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="w-full py-4 rounded-control bg-ink text-white font-bold text-[17px]
-                     disabled:opacity-40 disabled:cursor-not-allowed
-                     active:bg-ink/90 transition-colors"
-        >
-          {saving ? "Saving" : "Save settings"}
-        </button>
-      </div>
+      {canManage && (
+        <div className="px-4 py-6">
+          <button
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="w-full py-4 rounded-control bg-ink text-white font-bold text-[17px]
+                       disabled:opacity-40 disabled:cursor-not-allowed
+                       active:bg-ink/90 transition-colors"
+          >
+            {saving ? "Saving" : "Save settings"}
+          </button>
+        </div>
+      )}
+
+      {!canManage && (
+        <p className="px-4 py-6 text-[13px] text-ink-3">
+          Items, recipes, team and POS settings are managed by a manager.
+        </p>
+      )}
     </div>
   );
 }

@@ -28,15 +28,25 @@ already correct in `package.json` (`prisma generate && next build`).
 | `NEXTAUTH_URL` | The deployed URL, e.g. `https://kui.vercel.app` |
 | `AUTH_TRUST_HOST` | `true` |
 | `TOAST_WEBHOOK_SECRET` | Random string until real Toast credentials exist |
-| `NEXT_PUBLIC_SHOW_DEMO_LOGINS` | `true` **only** for a demo deployment |
+| `NEXT_PUBLIC_SHOW_DEMO_LOGINS` | `staff` for a public link, `all` for a private walkthrough, unset otherwise |
 
 `AUTH_TRUST_HOST` is not optional. Auth.js validates the request host in
 production, and a mismatch returns a 500 on every auth call — the login screen
 renders fine and then nothing works, which is a confusing failure to debug.
 
-`NEXT_PUBLIC_SHOW_DEMO_LOGINS=true` puts seeded accounts **and their PINs** on
-the login screen. Anyone with the link can sign in. That is the point for a
-demo; it must be unset before real staff use the app.
+`NEXT_PUBLIC_SHOW_DEMO_LOGINS` puts seeded accounts **and their PINs** on the
+login screen, so anyone with the link can sign in. Which accounts it offers is
+the difference between a safe public link and an open door:
+
+- `staff` — line cook only. Every destructive route is ADMIN/MANAGER-only, so a
+  visitor can log prep, waste and counts but cannot touch items, users, PINs or
+  settings. This is the setting for a link on a README.
+- `all` — every role, admin PIN included. Only for a link handed to one person.
+- unset — no shortcuts; the form asks for an email. Required before real staff
+  use the app.
+
+Anything else truthy is read as `staff`, so a stale `true` from an earlier
+deploy fails towards less access rather than more.
 
 ## 4. Schema and seed
 

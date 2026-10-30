@@ -6,32 +6,61 @@ import { signIn } from "next-auth/react";
 import { PIN_MIN_LENGTH, PIN_MAX_LENGTH } from "@/lib/pin";
 
 /**
- * Seeded demo accounts, with their PINs printed on screen. Gated behind an env
- * flag so they can never reach a real deployment — set
- * NEXT_PUBLIC_SHOW_DEMO_LOGINS=true locally or for a demo build.
+ * Seeded demo accounts, with their PINs printed on screen.
+ *
+ * NEXT_PUBLIC_SHOW_DEMO_LOGINS decides which roles are offered:
+ *
+ *   unset   no shortcuts at all; the form asks for an email. Real deployments.
+ *   "staff" the line cook only. The right setting for a link anyone can open:
+ *           every destructive route is ADMIN/MANAGER-only, so a visitor
+ *           holding a STAFF session can log prep, waste and counts but cannot
+ *           touch items, users, PINs or settings.
+ *   "all"   every role, for a private walkthrough.
+ *
+ * Anything else truthy is read as "staff". Publishing a PIN is the kind of
+ * mistake that should fail towards the least access, not the most, and a
+ * stale "true" left over from an earlier deploy lands here.
  */
-const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === "true";
+const DEMO_MODE = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS;
 
-const ACCOUNTS = [
-  { label: "Admin",     email: "admin.elmhill@cledis.com",   hint: "9999" },
-  { label: "Manager",   email: "manager.elmhill@cledis.com", hint: "1234" },
-  { label: "Line cook", email: "staff.elmhill@cledis.com",   hint: "0000" },
+const ALL_ACCOUNTS = [
+  { label: "Admin",     email: "admin.elmhill@cledis.com",   hint: "9999", staff: false },
+  { label: "Manager",   email: "manager.elmhill@cledis.com", hint: "1234", staff: false },
+  { label: "Line cook", email: "staff.elmhill@cledis.com",   hint: "0000", staff: true  },
 ];
+
+const ACCOUNTS = !DEMO_MODE
+  ? []
+  : DEMO_MODE === "all"
+  ? ALL_ACCOUNTS
+  : ALL_ACCOUNTS.filter((a) => a.staff);
+
+const SHOW_DEMO_ACCOUNTS = ACCOUNTS.length > 0;
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email,   setEmail]   = useState(SHOW_DEMO_ACCOUNTS ? ACCOUNTS[0].email : "");
+  const [email,   setEmail]   = useState(ACCOUNTS[0]?.email ?? "");
   const [pin,     setPin]     = useState("");
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
   const [shake,   setShake]   = useState(false);
+  // Shortcuts are a convenience, not the only way in. Someone who knows real
+  // credentials can always type them, which is what lets one deployment serve
+  // both a public demo and whoever actually administers it.
+  const [typingEmail, setTypingEmail] = useState(false);
   const pinRef = useRef<HTMLInputElement>(null);
 
+  const showShortcuts = SHOW_DEMO_ACCOUNTS && !typingEmail;
+
+  // Focus the keypad on mount, but only when a shortcut has already filled in
+  // an account. This used to run on every email change, which stole focus after
+  // the first keystroke and made the email field impossible to type into - the
+  // field every real deployment relies on, since shortcuts are demo-only.
   useEffect(() => {
-    pinRef.current?.focus();
-  }, [email]);
+    if (SHOW_DEMO_ACCOUNTS) pinRef.current?.focus();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +129,7 @@ export default function LoginPage() {
               Who are you?
             </label>
 
-            {!SHOW_DEMO_ACCOUNTS ? (
+            {!showShortcuts ? (
               <input
                 id="login-email"
                 type="email"
@@ -113,12 +142,17 @@ export default function LoginPage() {
                            focus:outline-none focus:border-ink transition-colors"
               />
             ) : (
-              <div className="grid grid-cols-3 gap-2">
+              <div className={ACCOUNTS.length === 1 ? "grid grid-cols-1 gap-2" : "grid grid-cols-3 gap-2"}>
                 {ACCOUNTS.map((acc) => (
                   <button
                     key={acc.email}
                     type="button"
-                    onClick={() => { setEmail(acc.email); setPin(""); setError(""); }}
+                    onClick={() => {
+                      setEmail(acc.email);
+                      setPin("");
+                      setError("");
+                      pinRef.current?.focus();
+                    }}
                     className={`p-3 rounded-control text-left transition-colors
                                 ${
                                   email === acc.email
@@ -137,6 +171,24 @@ export default function LoginPage() {
                   </button>
                 ))}
               </div>
+            )}
+
+            {SHOW_DEMO_ACCOUNTS && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTypingEmail((wasTyping) => {
+                    setEmail(wasTyping ? ACCOUNTS[0]?.email ?? "" : "");
+                    return !wasTyping;
+                  });
+                  setPin("");
+                  setError("");
+                }}
+                className="mt-2 text-[13px] font-semibold text-ink-2 hover:text-ink
+                           transition-colors"
+              >
+                {typingEmail ? "Use a demo account" : "Sign in with another account"}
+              </button>
             )}
           </div>
 
